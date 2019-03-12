@@ -10,7 +10,7 @@ const base = {
         host: '0.0.0.0',
         port: process.env.PORT || 8073
     },
-    devtool: 'cheap-module-source-map',
+    devtool: 'source-map',
     output: {
         library: 'VirtualMachine',
         filename: '[name].js'
