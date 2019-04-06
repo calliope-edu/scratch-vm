@@ -272,7 +272,6 @@ class Scrattino {
         this._onConnect = this._onConnect.bind(this);
         this._updateBoardState = this._updateBoardState.bind(this);
 
-        this._startUpdateBoardState();
     }
 
     /**
@@ -293,6 +292,7 @@ class Scrattino {
     connect (id) {
         if (this._firmata) {
             this._firmata.connectPeripheral(id);
+            this._startUpdateBoardState();
         }
     }
 
