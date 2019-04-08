@@ -196,9 +196,9 @@ class FirmataSocket extends JSONRPCWebSocket {
             });
     }
 
-    getAllPinIndex () {
-        if (!this.board) return [0];
-        return Object.keys(this.board.pins);
+    getPins () {
+        if (!this.board) return [];
+        return this.board.pins;
     }
 
     digitalWrite (pin, value) {
@@ -323,8 +323,8 @@ class Scrattino {
     }
 
     getAllPinIndex () {
-        if (!this._firmata) return [0];
-        return this._firmata.getAllPinIndex();
+        if (!this._firmata) return [];
+        return Object.keys(this._firmata.getPins());
     }
 
     getPinValue (pinIndex) {
@@ -624,8 +624,10 @@ class Scratch3ScrattinoBlocks {
     }
 
     getAllPinIndexMenu () {
-        return this.scrattino.getAllPinIndex()
+        const menu = this.scrattino.getAllPinIndex()
             .map(value => ({value: value, text: value.toString(10)}));
+        if (menu.length === 0) menu.push(''); // Avoid to break menu
+        return menu;
     }
 
 
