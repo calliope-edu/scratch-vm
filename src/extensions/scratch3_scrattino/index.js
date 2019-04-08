@@ -364,7 +364,7 @@ class Scrattino {
     }
 
     _updateBoardState () {
-        if (this._firmata) {
+        if (this.isConnected()) {
             this._firmata.updateBoardState();
         }
     }
