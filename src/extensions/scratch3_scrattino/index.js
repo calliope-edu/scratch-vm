@@ -327,6 +327,17 @@ class Scrattino {
         return Object.keys(this._firmata.getPins());
     }
 
+    getPWMPinIndex () {
+        const pinIndex = [];
+        if (!this._firmata) return pinIndex;
+        this._firmata.getPins().forEach((pin, index) => {
+            if (pin.supportedModes.includes(MODES.PWM)) {
+                pinIndex.push(index);
+            }
+        });
+        return pinIndex;
+    }
+
     getPinValue (pinIndex) {
         if (!this._firmata) return 0;
         return this._firmata.getPinValue(pinIndex);
@@ -569,6 +580,7 @@ class Scratch3ScrattinoBlocks {
                     arguments: {
                         PINS: {
                             type: ArgumentType.STRING,
+                            // menu: 'pwmPins', // Error in Blockly module when taking the block from pallet.
                             menu: 'pins',
                             defaultValue: '0'
                         },
@@ -603,6 +615,7 @@ class Scratch3ScrattinoBlocks {
             ],
             menus: {
                 pins: 'getAllPinIndexMenu',
+                pwmPins: 'getPWMPinIndexMenu',
                 digitalValue: this.DIGITAL_VALUE_MENU,
                 inputModes: this.INPUT_MODES_MENU
             }
@@ -630,6 +643,12 @@ class Scratch3ScrattinoBlocks {
         return menu;
     }
 
+    getPWMPinIndexMenu () {
+        const menu = this.scrattino.getPWMPinIndex()
+            .map(value => ({value: value, text: value.toString(10)}));
+        if (menu.length === 0) menu.push(''); // Avoid to break menu
+        return menu;
+    }
 
     a0 () {
         return this.scrattino.getAnalogPinValue(0);
