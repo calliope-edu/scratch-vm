@@ -108,11 +108,15 @@ class FirmataSocket extends JSONRPCWebSocket {
     _releaseBoard () {
         if (this.board) {
             this.sendRemoteRequest('disconnect', {portPath: this.board.transport.path})
+                .then(() => {
+                    this._ws.close();
+                    this.board = null;
+                    if (this._runtime) {
+                        this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
+                    }
+                })
                 .catch(e => {
                     this._sendRequestError(e);
-                })
-                .finally(() => {
-                    this.board = null;
                 });
         }
     }
@@ -121,11 +125,9 @@ class FirmataSocket extends JSONRPCWebSocket {
      * Close the websocket.
      */
     disconnect () {
-        if (this._discoverTimeoutID) {
-            clearTimeout(this._discoverTimeoutID);
+        if (this.board) {
+            this._releaseBoard();
         }
-        this._releaseBoard();
-        this._ws.close();
     }
 
     /**
@@ -162,7 +164,7 @@ class FirmataSocket extends JSONRPCWebSocket {
     _sendDisconnectError (/* e */) {
         this.board = null;
         if (this._runtime) {
-            this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECT_ERROR, {
+            this._runtime.emit(this._runtime.constructor.PERIPHERAL_CONNECTION_LOST_ERROR, {
                 message: `Scratch lost connection to`,
                 extensionId: this._extensionId
             });
@@ -183,7 +185,11 @@ class FirmataSocket extends JSONRPCWebSocket {
         this.sendRemoteRequest('getBoardState', {portPath: this.board.transport.path})
             .then(boardState => {
                 Object.assign(this.board, boardState);
-                if (!this.board.transport.isOpen) this._sendDisconnectError();
+                if (!this.board.transport.isOpen) {
+                    if (this._runtime) {
+                        this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
+                    }
+                }
             })
             .catch(e => {
                 this._sendRequestError(e);
@@ -279,9 +285,7 @@ class Scrattino {
      */
 
     scan () {
-        if (this._firmata) {
-            this._firmata.disconnect();
-        }
+        this.disconnect();
         this._firmata = new FirmataSocket(this._runtime, this._extensionId, {}, this._onConnect);
     }
 
