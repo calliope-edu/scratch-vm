@@ -324,14 +324,51 @@ class Scrattino {
 
     getAllPinIndex () {
         if (!this._firmata) return [];
-        return Object.keys(this._firmata.getPins());
+        return Object.keys(this._firmata.getPins())
+            .map(key => parseInt(key, 10));
     }
 
+
+    /**
+     * Return Array of pin index excluding analog inputs.
+     * @returns {Array.<number>} - index of pins not analog input.
+     */
+    getDigitalPinIndex () {
+        const pinIndex = [];
+        if (!this._firmata) return pinIndex;
+        this._firmata.getPins().forEach((pin, index) => {
+            if (pin.supportedModes.length > 0 && !pin.supportedModes.includes(MODES.ANALOG)) {
+                pinIndex.push(index);
+            }
+        });
+        return pinIndex;
+    }
+
+
+    /**
+     * Return Array of pin index for PWM mode excluding analog inputs.
+     * @returns {Array.<number>} - index of pins for PWM mode.
+     */
     getPWMPinIndex () {
         const pinIndex = [];
         if (!this._firmata) return pinIndex;
         this._firmata.getPins().forEach((pin, index) => {
-            if (pin.supportedModes.includes(MODES.PWM)) {
+            if (pin.supportedModes.includes(MODES.PWM) && !pin.supportedModes.includes(MODES.ANALOG)) {
+                pinIndex.push(index);
+            }
+        });
+        return pinIndex;
+    }
+
+    /**
+     * Return Array of pin index for servo mode excluding analog inputs.
+     * @returns {Array.<number>} - index of pins for servo mode.
+     */
+    getServoPinIndex () {
+        const pinIndex = [];
+        if (!this._firmata) return pinIndex;
+        this._firmata.getPins().forEach((pin, index) => {
+            if (pin.supportedModes.includes(MODES.SERVO) && !pin.supportedModes.includes(MODES.ANALOG)) {
                 pinIndex.push(index);
             }
         });
@@ -547,8 +584,8 @@ class Scratch3ScrattinoBlocks {
                     arguments: {
                         PINS: {
                             type: ArgumentType.STRING,
-                            menu: 'pins',
-                            defaultValue: '0'
+                            menu: 'digitalPins',
+                            defaultValue: '2'
                         }
                     },
                     filter: ['sprite', 'stage']
@@ -568,8 +605,8 @@ class Scratch3ScrattinoBlocks {
                     arguments: {
                         PINS: {
                             type: ArgumentType.STRING,
-                            menu: 'pins',
-                            defaultValue: '0'
+                            menu: 'digitalPins',
+                            defaultValue: '2'
                         },
                         MODE: {
                             type: ArgumentType.STRING,
@@ -594,8 +631,8 @@ class Scratch3ScrattinoBlocks {
                     arguments: {
                         PINS: {
                             type: ArgumentType.STRING,
-                            menu: 'pins',
-                            defaultValue: '0'
+                            menu: 'digitalPins',
+                            defaultValue: '2'
                         },
                         VALUE: {
                             type: ArgumentType.STRING,
@@ -620,9 +657,8 @@ class Scratch3ScrattinoBlocks {
                     arguments: {
                         PINS: {
                             type: ArgumentType.STRING,
-                            // menu: 'pwmPins', // Error in Blockly module when taking the block from pallet.
-                            menu: 'pins',
-                            defaultValue: '0'
+                            menu: 'pwmPins',
+                            defaultValue: '3'
                         },
                         VALUE: {
                             type: ArgumentType.NUMBER,
@@ -646,8 +682,8 @@ class Scratch3ScrattinoBlocks {
                     arguments: {
                         PINS: {
                             type: ArgumentType.STRING,
-                            menu: 'pins',
-                            defaultValue: '0'
+                            menu: 'servoPins',
+                            defaultValue: '2'
                         },
                         VALUE: {
                             type: ArgumentType.NUMBER,
@@ -658,8 +694,10 @@ class Scratch3ScrattinoBlocks {
                 }
             ],
             menus: {
-                pins: 'getAllPinIndexMenu',
+                allPins: 'getAllPinIndexMenu',
+                digitalPins: 'getDigitalPinIndexMenu',
                 pwmPins: 'getPWMPinIndexMenu',
+                servoPins: 'getServoPinIndexMenu',
                 digitalValue: this.DIGITAL_VALUE_MENU,
                 inputModes: this.INPUT_MODES_MENU
             }
@@ -709,14 +747,28 @@ class Scratch3ScrattinoBlocks {
 
     getAllPinIndexMenu () {
         const menu = this.scrattino.getAllPinIndex()
-            .map(value => ({value: value, text: value.toString(10)}));
+            .map(value => ({value: value.toString(10), text: value.toString(10)}));
+        if (menu.length === 0) menu.push(''); // Avoid to break menu
+        return menu;
+    }
+
+    getDigitalPinIndexMenu () {
+        const menu = this.scrattino.getDigitalPinIndex()
+            .map(value => ({value: value.toString(10), text: value.toString(10)}));
         if (menu.length === 0) menu.push(''); // Avoid to break menu
         return menu;
     }
 
     getPWMPinIndexMenu () {
         const menu = this.scrattino.getPWMPinIndex()
-            .map(value => ({value: value, text: value.toString(10)}));
+            .map(value => ({value: value.toString(10), text: value.toString(10)}));
+        if (menu.length === 0) menu.push(''); // Avoid to break menu
+        return menu;
+    }
+
+    getServoPinIndexMenu () {
+        const menu = this.scrattino.getServoPinIndex()
+            .map(value => ({value: value.toString(10), text: value.toString(10)}));
         if (menu.length === 0) menu.push(''); // Avoid to break menu
         return menu;
     }
