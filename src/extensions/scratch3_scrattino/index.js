@@ -2,7 +2,7 @@ const ArgumentType = require('../../extension-support/argument-type');
 const BlockType = require('../../extension-support/block-type');
 const Cast = require('../../util/cast');
 const log = require('../../util/log');
-// const formatMessage = require('format-message');
+const formatMessage = require('format-message');
 
 const JSONRPCWebSocket = require('../../util/jsonrpc-web-socket.js');
 
@@ -453,7 +453,11 @@ class Scratch3ScrattinoBlocks {
                     branchCount: 0,
                     isTerminal: false,
                     blockAllThreads: false,
-                    text: 'A0',
+                    text: formatMessage({
+                        id: 'scrattino.A0',
+                        default: 'A0',
+                        description: 'Arduino Analog Input 0'
+                    }),
                     func: 'a0',
                     filter: ['sprite', 'stage']
                 },
@@ -463,7 +467,11 @@ class Scratch3ScrattinoBlocks {
                     branchCount: 0,
                     isTerminal: false,
                     blockAllThreads: false,
-                    text: 'A1',
+                    text: formatMessage({
+                        id: 'scrattino.A1',
+                        default: 'A1',
+                        description: 'Arduino Analog Input 1'
+                    }),
                     func: 'a1',
                     filter: ['sprite', 'stage']
                 },
@@ -473,7 +481,11 @@ class Scratch3ScrattinoBlocks {
                     branchCount: 0,
                     isTerminal: false,
                     blockAllThreads: false,
-                    text: 'A2',
+                    text: formatMessage({
+                        id: 'scrattino.A2',
+                        default: 'A2',
+                        description: 'Arduino Analog Input 2'
+                    }),
                     func: 'a2',
                     filter: ['sprite', 'stage']
                 },
@@ -483,7 +495,11 @@ class Scratch3ScrattinoBlocks {
                     branchCount: 0,
                     isTerminal: false,
                     blockAllThreads: false,
-                    text: 'A3',
+                    text: formatMessage({
+                        id: 'scrattino.A3',
+                        default: 'A3',
+                        description: 'Arduino Analog Input 3'
+                    }),
                     func: 'a3',
                     filter: ['sprite', 'stage']
                 },
@@ -493,7 +509,11 @@ class Scratch3ScrattinoBlocks {
                     branchCount: 0,
                     isTerminal: false,
                     blockAllThreads: false,
-                    text: 'A4',
+                    text: formatMessage({
+                        id: 'scrattino.A4',
+                        default: 'A4',
+                        description: 'Arduino Analog Input 4'
+                    }),
                     func: 'a4',
                     filter: ['sprite', 'stage']
                 },
@@ -503,7 +523,11 @@ class Scratch3ScrattinoBlocks {
                     branchCount: 0,
                     isTerminal: false,
                     blockAllThreads: false,
-                    text: 'A5',
+                    text: formatMessage({
+                        id: 'scrattino.A5',
+                        default: 'A5',
+                        description: 'Arduino Analog Input 5'
+                    }),
                     func: 'a5',
                     filter: ['sprite', 'stage']
                 },
@@ -514,7 +538,11 @@ class Scratch3ScrattinoBlocks {
                     branchCount: 0,
                     isTerminal: false,
                     blockAllThreads: false,
-                    text: 'D[PINS]',
+                    text: formatMessage({
+                        id: 'scrattino.getPinValue',
+                        default: 'D[PINS]',
+                        description: 'Arduino Digital Input value of the pin'
+                    }),
                     func: 'getPinValue',
                     arguments: {
                         PINS: {
@@ -531,7 +559,11 @@ class Scratch3ScrattinoBlocks {
                     branchCount: 0,
                     isTerminal: false,
                     blockAllThreads: false,
-                    text: 'Set D[PINS] Input [MODE] ',
+                    text: formatMessage({
+                        id: 'scrattino.setPinModeInput',
+                        default: 'Set D[PINS] Input [MODE] ',
+                        description: 'Set the Arduino pin to Digital Input Pullup/Pulldown'
+                    }),
                     func: 'setPinModeInput',
                     arguments: {
                         PINS: {
@@ -553,7 +585,11 @@ class Scratch3ScrattinoBlocks {
                     branchCount: 0,
                     isTerminal: false,
                     blockAllThreads: false,
-                    text: 'Set D[PINS] Digital [VALUE] ',
+                    text: formatMessage({
+                        id: 'scrattino.setPinValueDigital',
+                        default: 'Set D[PINS] Output [VALUE] ',
+                        description: 'Set the Arduino pin to Digital Output 0/1'
+                    }),
                     func: 'setPinValueDigital',
                     arguments: {
                         PINS: {
@@ -575,7 +611,11 @@ class Scratch3ScrattinoBlocks {
                     branchCount: 0,
                     isTerminal: false,
                     blockAllThreads: false,
-                    text: 'Set D[PINS] PWM [VALUE] ',
+                    text: formatMessage({
+                        id: 'scrattino.setPinValuePwm',
+                        default: 'Set D[PINS] PWM [VALUE] ',
+                        description: 'Set the Arduino pin to PWM value'
+                    }),
                     func: 'setPinValuePwm',
                     arguments: {
                         PINS: {
@@ -597,7 +637,11 @@ class Scratch3ScrattinoBlocks {
                     branchCount: 0,
                     isTerminal: false,
                     blockAllThreads: false,
-                    text: 'Set D[PINS] Servo [VALUE] ',
+                    text: formatMessage({
+                        id: 'scrattino.setPinValueServo',
+                        default: 'Set D[PINS] Servo [VALUE] ',
+                        description: 'Set the Arduino pin to Servo value'
+                    }),
                     func: 'setPinValueServo',
                     arguments: {
                         PINS: {
@@ -624,15 +668,42 @@ class Scratch3ScrattinoBlocks {
 
     get DIGITAL_VALUE_MENU () {
         return [
-            {text: 'LOW', value: DIGITAL_VALUE.LOW},
-            {text: 'HIGH', value: DIGITAL_VALUE.HIGH}
+            {
+                text: formatMessage({
+                    id: 'scrattino.digitalValueMenu.Low',
+                    default: 'Low',
+                    description: 'label for low value in digital output menu for Scrattino extension'
+                }),
+                value: DIGITAL_VALUE.LOW
+            },
+            {
+                text: formatMessage({
+                    id: 'scrattino.digitalValueMenu.High',
+                    default: 'High',
+                    description: 'label for high value in digital output menu for Scrattino extension'
+                }),
+                value: DIGITAL_VALUE.HIGH}
         ];
     }
 
     get INPUT_MODES_MENU () {
         return [
-            {text: 'PULLUP', value: INPUT_MODES.PULLUP},
-            {text: 'PULLDOWN', value: INPUT_MODES.INPUT}
+            {
+                text: formatMessage({
+                    id: 'scrattino.digitalValueMenu.PullUp',
+                    default: 'Pull-Up',
+                    description: 'label for pull-up value in digital input menu for Scrattino extension'
+                }),
+                value: INPUT_MODES.PULLUP
+            },
+            {
+                text: formatMessage({
+                    id: 'scrattino.digitalValueMenu.PullDown',
+                    default: 'Pull-Down',
+                    description: 'label for pull-down value in digital input menu for Scrattino extension'
+                }),
+                value: INPUT_MODES.INPUT
+            }
         ];
     }
 
