@@ -33,10 +33,13 @@ const BoostBLE = {
 };
 
 /**
- * Boost Motor Max Power.
+ * Boost Motor Max Power Add. Defines how much more power than the target speed
+ * the motors may supply to reach the target speed faster.
+ * Lower number == softer, slower reached target speed.
+ * Higher number == harder, faster reached target speed.
  * @constant {number}
  */
-const BoostMotorMaxPower = 100;
+const BoostMotorMaxPowerAdd = 10;
 
 /**
  * A time interval to wait (in milliseconds) in between battery check calls.
@@ -98,18 +101,34 @@ const BoostPort = {
 };
 
 /**
- * Enum for indexed colors read by the Boost Vision Sensor
+ * Ids for each color sensor value used by the extension.
+ * @readonly
+ * @enum {string}
+ */
+const BoostColor = {
+    ANY: 'any',
+    NONE: 'none',
+    RED: 'red',
+    BLUE: 'blue',
+    GREEN: 'green',
+    YELLOW: 'yellow',
+    WHITE: 'white',
+    BLACK: 'black'
+};
+
+/**
+ * Enum for indices for each color sensed by the Boost vision sensor.
  * @readonly
  * @enum {number}
  */
-const BoostColor = {
-    NONE: 255,
-    RED: 9,
-    BLUE: 3,
-    GREEN: 5,
-    YELLOW: 7,
-    WHITE: 10,
-    BLACK: 0
+const BoostColorIndex = {
+    [BoostColor.NONE]: 255,
+    [BoostColor.RED]: 9,
+    [BoostColor.BLUE]: 3,
+    [BoostColor.GREEN]: 5,
+    [BoostColor.YELLOW]: 7,
+    [BoostColor.WHITE]: 10,
+    [BoostColor.BLACK]: 0
 };
 
 /**
@@ -217,6 +236,17 @@ const BoostMode = {
 };
 
 /**
+ * Enum for Boost motor states.
+ * @param {number}
+ */
+const BoostMotorState = {
+    OFF: 0,
+    ON_FOREVER: 1,
+    ON_FOR_TIME: 2,
+    ON_FOR_ROTATION: 3
+};
+
+/**
  * Helper function for converting a JavaScript number to an INT32-number
  * @param {number} number - a number
  * @return {array} - a 4-byte array of Int8-values representing an INT32-number
@@ -280,7 +310,7 @@ class BoostMotor {
          * @type {number}
          * @private
          */
-        this._power = 100;
+        this._power = 50;
 
         /**
          * This motor's current relative position
@@ -294,7 +324,7 @@ class BoostMotor {
          * @type {boolean}
          * @private
          */
-        this._status = BoostPortFeedback.IDLE;
+        this._status = BoostMotorState.OFF;
 
         /**
          * If the motor has been turned on or is actively braking for a specific duration, this is the timeout ID for
@@ -362,15 +392,17 @@ class BoostMotor {
     }
 
     /**
-     * @param {int} value - this motor's new power level, in the range [0,100].
+     * @param {int} value - this motor's new power level, in the range [10,100].
      */
     set power (value) {
-        const p = Math.max(0, Math.min(value, 100));
-        // The Boost motors barely move at speed 1 - solution is to step up to 2.
-        if (p === 1) {
-            this._power = 2;
+        /**
+         * Scale the motor power to a range between 10 and 100,
+         * to make sure the motors will run with something built onto them.
+         */
+        if (value === 0) {
+            this._power = 0;
         } else {
-            this._power = p;
+            this._power = MathUtil.scale(value, 1, 100, 10, 100);
         }
     }
 
@@ -389,13 +421,20 @@ class BoostMotor {
     }
 
     /**
-     * @return {boolean} - true if this motor is currently moving, false if this motor is off or braking.
+     * @return {BoostMotorState} - the motor's current state.
      */
-    get isOn () {
-        if (this._status & (BoostPortFeedback.BUSY_OR_FULL ^ BoostPortFeedback.IN_PROGRESS)) {
-            return true;
-        }
-        return false;
+    get status () {
+        return this._status;
+    }
+
+    /**
+     * @param {BoostMotorState} value - set this motor's state.
+     */
+    set status (value) {
+        // Clear any time- or rotation-related state from motor and set new status.
+        this._clearRotationState();
+        this._clearTimeout();
+        this._status = value;
     }
 
     /**
@@ -434,34 +473,45 @@ class BoostMotor {
     }
 
     /**
-     * Turn this motor on indefinitely.
+     * Turn this motor on indefinitely
+     * @private
      */
-    turnOn () {
-        if (this._power === 0) return;
+    _turnOn () {
+        if (this.power === 0) return;
         const cmd = this._parent.generateOutputCommand(
             this._index,
-            BoostOutputExecution.EXECUTE_IMMEDIATELY ^ BoostOutputExecution.COMMAND_FEEDBACK,
+            BoostOutputExecution.EXECUTE_IMMEDIATELY,
             BoostOutputSubCommand.START_SPEED,
             [
-                this._power * this._direction,
-                BoostMotorMaxPower,
+                this.power * this.direction,
+                MathUtil.clamp(this.power + BoostMotorMaxPowerAdd, 0, 100),
                 BoostMotorProfile.DO_NOT_USE
             ]);
 
         this._parent.send(BoostBLE.characteristic, cmd);
+    }
 
-        this._clearTimeout();
+    /**
+     * Turn this motor on indefinitely
+     * @param {boolean} [resetState=true] - whether to reset the state of the motor when running this command.
+     */
+    turnOnForever (resetState = true){
+        if (this.power === 0) return;
+        if (resetState) this.status = BoostMotorState.ON_FOREVER;
+        this._turnOn();
     }
 
     /**
      * Turn this motor on for a specific duration.
      * @param {number} milliseconds - run the motor for this long.
+     * @param {boolean} [resetState=true] - whether to reset the state of the motor when running this command.
      */
-    turnOnFor (milliseconds) {
-        if (this._power === 0) return;
+    turnOnFor (milliseconds, resetState = true) {
+        if (this.power === 0) return;
 
         milliseconds = Math.max(0, milliseconds);
-        this.turnOn();
+        if (resetState) this.status = BoostMotorState.ON_FOR_TIME;
+        this._turnOn();
         this._setNewTimeout(this.turnOff, milliseconds);
     }
 
@@ -469,26 +519,31 @@ class BoostMotor {
      * Turn this motor on for a specific rotation in degrees.
      * @param {number} degrees - run the motor for this amount of degrees.
      * @param {number} direction - rotate in this direction
+     * @param {boolean} [resetState=true] - whether to reset the state of the motor when running this command.
      */
-    turnOnForDegrees (degrees, direction) {
-        if (this._power === 0) return;
+    turnOnForDegrees (degrees, direction, resetState = true) {
+        if (this.power === 0) {
+            this._clearRotationState();
+            return;
+        }
+
         degrees = Math.max(0, degrees);
 
         const cmd = this._parent.generateOutputCommand(
             this._index,
-            BoostOutputExecution.EXECUTE_IMMEDIATELY ^ BoostOutputExecution.COMMAND_FEEDBACK,
+            (BoostOutputExecution.EXECUTE_IMMEDIATELY ^ BoostOutputExecution.COMMAND_FEEDBACK),
             BoostOutputSubCommand.START_SPEED_FOR_DEGREES,
             [
                 ...numberToInt32Array(degrees),
-                this._power * this._direction * direction,
-                BoostMotorMaxPower,
+                this.power * this.direction * direction,
+                MathUtil.clamp(this.power + BoostMotorMaxPowerAdd, 0, 100),
                 BoostMotorEndState.BRAKE,
                 BoostMotorProfile.DO_NOT_USE
             ]
         );
-
-        this._pendingPositionOrigin = this._position;
-        this._pendingPositionDestination = this._position + (degrees * this._direction * direction);
+        
+        if (resetState) this.status = BoostMotorState.ON_FOR_ROTATION;
+        this._pendingPositionDestination = this.position + (degrees * this.direction * direction);
         this._parent.send(BoostBLE.characteristic, cmd);
     }
 
@@ -497,7 +552,7 @@ class BoostMotor {
      * @param {boolean} [useLimiter=true] - if true, use the rate limiter
      */
     turnOff (useLimiter = true) {
-        if (this._power === 0) return;
+        if (this.power === 0) return;
 
         const cmd = this._parent.generateOutputCommand(
             this._index,
@@ -510,6 +565,7 @@ class BoostMotor {
             ]
         );
 
+        this.status = BoostMotorState.OFF;
         this._parent.send(BoostBLE.characteristic, cmd, useLimiter);
     }
 
@@ -545,6 +601,19 @@ class BoostMotor {
         this._pendingTimeoutId = timeoutID;
         this._pendingTimeoutStartTime = Date.now();
         this._pendingTimeoutDelay = delay;
+    }
+
+    /**
+     * Clear the motor states related to rotation-based commands, if any.
+     * Safe to call even when there is no pending promise function.
+     * @private
+     */
+    _clearRotationState () {
+        if (this._pendingPromiseFunction !== null) {
+            this._pendingPromiseFunction();
+            this._pendingPromiseFunction = null;
+        }
+        this._pendingPositionDestination = null;
     }
 }
 
@@ -590,7 +659,8 @@ class Boost {
         this._sensors = {
             tiltX: 0,
             tiltY: 0,
-            color: BoostColor.NONE
+            color: BoostColor.NONE,
+            previousColor: BoostColor.NONE
         };
 
         /**
@@ -598,7 +668,7 @@ class Boost {
          * @type {Array}
          * @private
          */
-        this._colorBucket = [];
+        this._colorSamples = [];
 
         /**
          * The Bluetooth connection socket for reading/writing peripheral data.
@@ -648,6 +718,23 @@ class Boost {
      */
     get color () {
         return this._sensors.color;
+    }
+
+    /**
+     * @return {number} - the previous color value received from the vision sensor.
+     */
+    get previousColor () {
+        return this._sensors.previousColor;
+    }
+
+    /**
+     * Look up the color id for an index received from the vision sensor.
+     * @param {number} index - the color index to look up.
+     * @return {BoostColor} the color id for this index.
+     */
+    boostColorForIndex (index) {
+        const colorForIndex = Object.keys(BoostColorIndex).find(key => BoostColorIndex[key] === index);
+        return colorForIndex || BoostColor.NONE;
     }
 
     /**
@@ -734,7 +821,7 @@ class Boost {
                         dataPrefix: [0x97, 0x03, 0x00, 0x40],
                         mask: [0xFF, 0xFF, 0, 0xFF]
                     }
-                } */
+                } commented out until feature is enabled in scratch-link */
             }],
             optionalServices: []
         }, this._onConnect, this.disconnect);
@@ -760,7 +847,7 @@ class Boost {
             tiltX: 0,
             tiltY: 0,
             color: BoostColor.NONE,
-            oldColor: BoostColor.NONE
+            previousColor: BoostColor.NONE
         };
 
         if (this._ble) {
@@ -879,7 +966,7 @@ class Boost {
         /**
          * First three bytes are the common header:
          * 0: Length of message
-         * 1: Hub ID (always 0x00 at the moment)
+         * 1: Hub ID (always 0x00 at the moment, unused)
          * 2: Message Type
          * 3: Port ID
          * We base our switch-case on Message Type
@@ -892,7 +979,7 @@ class Boost {
         case BoostMessage.HUB_ATTACHED_IO: { // IO Attach/Detach events
             const event = data[4];
             const typeId = data[5];
-        
+
             switch (event) {
             case BoostIOEvent.ATTACHED:
                 this._registerSensorOrMotor(portID, typeId);
@@ -907,18 +994,19 @@ class Boost {
         }
         case BoostMessage.PORT_VALUE: {
             const type = this._ports[portID];
-            
+
             switch (type) {
             case BoostIO.TILT:
                 this._sensors.tiltX = data[4];
                 this._sensors.tiltY = data[5];
                 break;
             case BoostIO.COLOR:
-                this._colorBucket.unshift(data[4]);
-                if (this._colorBucket.length > BoostColorSampleSize) {
-                    this._colorBucket.pop();
-                    if (this._colorBucket.every((v, i, arr) => v === arr[0])) {
-                        this._sensors.color = this._colorBucket[0];
+                this._colorSamples.unshift(data[4]);
+                if (this._colorSamples.length > BoostColorSampleSize) {
+                    this._colorSamples.pop();
+                    if (this._colorSamples.every((v, i, arr) => v === arr[0])) {
+                        this._sensors.previousColor = this._sensors.color;
+                        this._sensors.color = this.boostColorForIndex(this._colorSamples[0]);
                     } else {
                         this._sensors.color = BoostColor.NONE;
                     }
@@ -942,10 +1030,13 @@ class Boost {
             const feedback = data[4];
             const motor = this.motor(portID);
             if (motor) {
-                motor._status = feedback;
-                if (feedback === (BoostPortFeedback.COMPLETED ^ BoostPortFeedback.IDLE) &&
-                    motor.pendingPromiseFunction) {
-                    motor.pendingPromiseFunction();
+                // Makes sure that commands resolve both when they actually complete and when they fail
+                const isBusy = feedback & BoostPortFeedback.IN_PROGRESS;
+                const commandCompleted = feedback & (BoostPortFeedback.COMPLETED ^ BoostPortFeedback.DISCARDED);
+                if (!isBusy && commandCompleted) {
+                    if (motor.status === BoostMotorState.ON_FOR_ROTATION) {
+                        motor.status = BoostMotorState.OFF;
+                    }
                 }
             }
             break;
@@ -953,7 +1044,6 @@ class Boost {
         case BoostMessage.ERROR:
             log.warn(`Error reported by hub: ${data}`);
             break;
-        default:
         }
     }
 
@@ -1016,7 +1106,7 @@ class Boost {
         default:
             mode = BoostMode.UNKNOWN;
         }
-        
+
         const cmd = this.generateInputCommand(
             portID,
             mode,
@@ -1081,21 +1171,6 @@ const BoostTiltDirection = {
     LEFT: 'left',
     RIGHT: 'right',
     ANY: 'any'
-};
-
-/**
- * Enum for vision sensor colors.
- * @readonly
- * @enum {string}
- */
-const BoostColorLabel = {
-    ANY: 'any',
-    RED: 'red',
-    BLUE: 'blue',
-    GREEN: 'green',
-    YELLOW: 'yellow',
-    BLACK: 'black',
-    WHITE: 'white'
 };
 
 /**
@@ -1275,7 +1350,7 @@ class Scratch3BoostBlocks {
                     opcode: 'whenColor',
                     text: formatMessage({
                         id: 'boost.whenColor',
-                        default: 'when [COLOR] color seen',
+                        default: 'when [COLOR] brick seen',
                         description: 'check for when color'
                     }),
                     blockType: BlockType.HAT,
@@ -1283,18 +1358,25 @@ class Scratch3BoostBlocks {
                         COLOR: {
                             type: ArgumentType.STRING,
                             menu: 'COLOR',
-                            defaultValue: BoostColorLabel.ANY
+                            defaultValue: BoostColor.ANY
                         }
                     }
                 },
                 {
-                    opcode: 'getColor',
+                    opcode: 'seeingColor',
                     text: formatMessage({
-                        id: 'boost.getColor',
-                        default: 'color',
-                        description: 'the color returned by the vision sensor'
+                        id: 'boost.seeingColor',
+                        default: 'seeing [COLOR] brick?',
+                        description: 'is the color sensor seeing a certain color?'
                     }),
-                    blockType: BlockType.REPORTER
+                    blockType: BlockType.BOOLEAN,
+                    arguments: {
+                        COLOR: {
+                            type: ArgumentType.STRING,
+                            menu: 'COLOR',
+                            defaultValue: BoostColor.ANY
+                        }
+                    }
                 },
                 {
                     opcode: 'whenTilted',
@@ -1532,61 +1614,60 @@ class Scratch3BoostBlocks {
                     {
                         text: formatMessage({
                             id: 'boost.color.red',
-                            default: BoostColorLabel.RED,
-                            description: BoostColorLabel.RED
+                            default: 'red',
+                            description: 'the color red'
                         }),
-                        value: BoostColorLabel.RED
+                        value: BoostColor.RED
                     },
                     {
                         text: formatMessage({
                             id: 'boost.color.blue',
-                            default: BoostColorLabel.BLUE,
-                            description: BoostColorLabel.BLUE
+                            default: 'blue',
+                            description: 'the color blue'
                         }),
-                        value: BoostColorLabel.BLUE
+                        value: BoostColor.BLUE
                     },
                     {
                         text: formatMessage({
                             id: 'boost.color.green',
-                            default: BoostColorLabel.GREEN,
-                            description: BoostColorLabel.GREEN
+                            default: 'green',
+                            description: 'the color green'
                         }),
-                        value: BoostColorLabel.GREEN
+                        value: BoostColor.GREEN
                     },
                     {
                         text: formatMessage({
                             id: 'boost.color.yellow',
-                            default: BoostColorLabel.YELLOW,
-                            description: BoostColorLabel.YELLOW
+                            default: 'yellow',
+                            description: 'the color yellow'
                         }),
-                        value: BoostColorLabel.YELLOW
+                        value: BoostColor.YELLOW
                     },
                     {
                         text: formatMessage({
                             id: 'boost.color.white',
-                            default: BoostColorLabel.WHITE,
-                            desription: BoostColorLabel.WHITE
+                            default: 'white',
+                            desription: 'the color white'
                         }),
-                        value: BoostColorLabel.WHITE
+                        value: BoostColor.WHITE
                     },
                     {
                         text: formatMessage({
                             id: 'boost.color.black',
-                            default: BoostColorLabel.BLACK,
-                            description: BoostColorLabel.BLACK
+                            default: 'black',
+                            description: 'the color black'
                         }),
-                        value: BoostColorLabel.BLACK
+                        value: BoostColor.BLACK
                     },
                     {
                         text: formatMessage({
                             id: 'boost.color.any',
-                            default: BoostColorLabel.ANY,
-                            description: BoostColorLabel.ANY
+                            default: 'any color',
+                            description: 'any color'
                         }),
-                        value: BoostColorLabel.ANY
+                        value: BoostColor.ANY
                     }
-                ],
-                OP: ['<', '>']
+                ]
             }
         };
     }
@@ -1605,9 +1686,7 @@ class Scratch3BoostBlocks {
         return new Promise(resolve => {
             this._forEachMotor(args.MOTOR_ID, motorIndex => {
                 const motor = this._peripheral.motor(motorIndex);
-                if (motor) {
-                    motor.turnOnFor(durationMS);
-                }
+                if (motor) motor.turnOnFor(durationMS);
             });
 
             // Run for some time even when no motor is connected
@@ -1641,6 +1720,8 @@ class Scratch3BoostBlocks {
         const promises = motors.map(portID => {
             const motor = this._peripheral.motor(portID);
             if (motor) {
+                // to avoid a hanging block if power is 0, return an immediately resolving promise.
+                if (motor.power === 0) return Promise.resolve();
                 return new Promise(resolve => {
                     motor.turnOnForDegrees(degrees, sign);
                     motor.pendingPromiseFunction = resolve;
@@ -1665,9 +1746,7 @@ class Scratch3BoostBlocks {
         // TODO: cast args.MOTOR_ID?
         this._forEachMotor(args.MOTOR_ID, motorIndex => {
             const motor = this._peripheral.motor(motorIndex);
-            if (motor) {
-                motor.turnOn();
-            }
+            if (motor) motor.turnOnForever();
         });
 
         return new Promise(resolve => {
@@ -1687,9 +1766,7 @@ class Scratch3BoostBlocks {
         // TODO: cast args.MOTOR_ID?
         this._forEachMotor(args.MOTOR_ID, motorIndex => {
             const motor = this._peripheral.motor(motorIndex);
-            if (motor) {
-                motor.turnOff();
-            }
+            if (motor) motor.turnOff();
         });
 
         return new Promise(resolve => {
@@ -1704,6 +1781,7 @@ class Scratch3BoostBlocks {
      * @param {object} args - the block's arguments.
      * @property {MotorID} MOTOR_ID - the motor(s) to be affected.
      * @property {int} POWER - the new power level for the motor(s).
+     * @return {Promise} - returns a promise to make sure the block yields.
      */
     setMotorPower (args) {
         // TODO: cast args.MOTOR_ID?
@@ -1711,16 +1789,22 @@ class Scratch3BoostBlocks {
             const motor = this._peripheral.motor(motorIndex);
             if (motor) {
                 motor.power = MathUtil.clamp(Cast.toNumber(args.POWER), 0, 100);
-                if (motor.isOn) {
-                    if (motor.pendingTimeoutDelay) {
-                        motor.turnOnFor(motor.pendingTimeoutStartTime + motor.pendingTimeoutDelay - Date.now());
-                    } else if (motor.pendingPositionDestination) {
-                        const p = motor.pendingPositionDestination - motor.position;
-                        motor.turnOnForDegrees(p, Math.sign(p) * motor.direction);
-                    }
+                switch (motor.status) {
+                case BoostMotorState.ON_FOREVER:
+                    motor.turnOnForever(false);
+                    break;
+                case BoostMotorState.ON_FOR_TIME:
+                    motor.turnOnFor(motor.pendingTimeoutStartTime + motor.pendingTimeoutDelay - Date.now(), false);
+                    break;
+                case BoostMotorState.ON_FOR_ROTATION: {
+                    const p = Math.abs(motor.pendingPositionDestination - motor.position, false);
+                    motor.turnOnForDegrees(p, Math.sign(p));
+                    break;
+                }
                 }
             }
         });
+        return Promise.resolve();
     }
 
     /**
@@ -1729,6 +1813,7 @@ class Scratch3BoostBlocks {
      * @param {object} args - the block's arguments.
      * @property {MotorID} MOTOR_ID - the motor(s) to be affected.
      * @property {MotorDirection} MOTOR_DIRECTION - the new direction for the motor(s).
+     * @return {Promise} - returns a promise to make sure the block yields.
      */
     setMotorDirection (args) {
         // TODO: cast args.MOTOR_ID?
@@ -1750,16 +1835,24 @@ class Scratch3BoostBlocks {
                     break;
                 }
                 // keep the motor on if it's running, and update the pending timeout if needed
-                if (motor.isOn) {
-                    if (motor.pendingTimeoutDelay) {
-                        motor.turnOnFor(motor.pendingTimeoutStartTime + motor.pendingTimeoutDelay - Date.now());
-                    } else if (motor.pendingPositionDestination) {
-                        const p = motor.pendingPositionDestination - motor.position;
-                        motor.turnOnForDegrees(p, Math.sign(p) * motor.direction);
+                if (motor) {
+                    switch (motor.status) {
+                    case BoostMotorState.ON_FOREVER:
+                        motor.turnOnForever(false);
+                        break;
+                    case BoostMotorState.ON_FOR_TIME:
+                        motor.turnOnFor(motor.pendingTimeoutStartTime + motor.pendingTimeoutDelay - Date.now(), false);
+                        break;
+                    case BoostMotorState.ON_FOR_ROTATION: {
+                        const p = Math.abs(motor.pendingPositionDestination - motor.position);
+                        motor.turnOnForDegrees(p, Math.sign(p), false);
+                        break;
+                    }
                     }
                 }
             }
         });
+        return Promise.resolve();
     }
 
     /**
@@ -1769,7 +1862,7 @@ class Scratch3BoostBlocks {
     getMotorPosition (args) {
         let portID = null;
         switch (args.MOTOR_REPORTER_ID) {
-            
+
         case BoostMotorLabel.A:
             portID = BoostPort.A;
             break;
@@ -1786,8 +1879,8 @@ class Scratch3BoostBlocks {
             log.warn('Asked for a motor position that doesnt exist!');
             return false;
         }
-        if (portID && this._peripheral._motors[portID]) {
-            return MathUtil.wrapClamp(this._peripheral._motors[portID].position, 0, 360);
+        if (portID && this._peripheral.motor(portID)) {
+            return MathUtil.wrapClamp(this._peripheral.motor(portID).position, 0, 360);
         }
         return 0;
     }
@@ -1897,45 +1990,36 @@ class Scratch3BoostBlocks {
     }
 
     /**
-     * Test whether the tilt sensor is currently tilted.
+     * Edge-triggering hat function, for when the vision sensor is detecting
+     * a certain color.
      * @param {object} args - the block's arguments.
-     * @property {Color} COLOR - the color to test.
-     * @return {boolean} - true if the tilt sensor is tilted past a threshold in the specified direction.
+     * @return {boolean} - true when the color sensor senses the specified color.
      */
     whenColor (args) {
-        return this._isColor(args.COLOR);
-    }
-
-    /**
-     * @return {number} - the vision sensor's color value. Indexed LEGO brick colors.
-     */
-    getColor () {
-        // To get a string representation, lookup the key of the BoostColor-enum value
-        return Object.keys(BoostColor).find(key => BoostColor[key] === this._peripheral.color)
-            .toLowerCase();
-    }
-
-    /**
-     * Test whether the vision sensor is detecting a certain color.
-     * @param {number} args - the color to test.
-     * @return {boolean} - true when the color sensor senses the specified color.
-     * @private
-     */
-    _isColor (args) {
-        switch (args) {
-        case BoostColorLabel.ANY:
-            if (Object.keys(BoostColor).find(key => BoostColor[key])
-                .toLowerCase() !== this.getColor()) {
-                if (this.getColor() === this._peripheral.oldColor) {
-                    return false;
-                }
-                this._peripheral.oldColor = this.getColor();
-                return true;
-            }
-            break;
-        default:
-            return this.getColor() === color;
+        if (args.COLOR === BoostColor.ANY) {
+            // For "any" color, return true if the color is not "none", and
+            // the color is different from the previous color detected. This
+            // allows the hat to trigger when the color changes from one color
+            // to another.
+            return this._peripheral.color !== BoostColor.NONE &&
+                this._peripheral.color !== this._peripheral.previousColor;
         }
+
+        return args.COLOR === this._peripheral.color;
+    }
+
+    /**
+     * A boolean reporter function, for whether the vision sensor is detecting
+     * a certain color.
+     * @param {object} args - the block's arguments.
+     * @return {boolean} - true when the color sensor senses the specified color.
+     */
+    seeingColor (args) {
+        if (args.COLOR === BoostColor.ANY) {
+            return this._peripheral.color !== BoostColor.NONE;
+        }
+
+        return args.COLOR === this._peripheral.color;
     }
 
     /**
