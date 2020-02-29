@@ -25,7 +25,7 @@ class BLE extends JSONRPC {
         this._availablePeripherals = {};
         this._connectCallback = connectCallback;
         this._connected = false;
-        this._characteristicDidChangeCallback = null;
+        this._characteristicDidChangeCallback = [];
         this._resetCallback = resetCallback;
         this._discoverTimeoutID = null;
         this._extensionId = extensionId;
@@ -95,6 +95,14 @@ class BLE extends JSONRPC {
         return this._connected;
     }
 
+    getCharacteristicDidChangeCallbacks (serviceId, characteristicId, callback = null) {
+        return this._characteristicDidChangeCallback.filter(
+            ently => ((ently.serviceId === serviceId) &&
+            (ently.characteristicId === characteristicId) &&
+            (callback ? (ently.callback === callback) : true))
+        );
+    }
+
     /**
      * Start receiving notifications from the specified ble service.
      * @param {number} serviceId - the ble service to read.
@@ -107,11 +115,26 @@ class BLE extends JSONRPC {
             serviceId,
             characteristicId
         };
-        this._characteristicDidChangeCallback = onCharacteristicChanged;
+        if (onCharacteristicChanged) {
+            this.registerCharacteristicDidChangeCallback(serviceId, characteristicId, onCharacteristicChanged);
+        }
         return this.sendRemoteRequest('startNotifications', params)
             .catch(e => {
                 this.handleDisconnectError(e);
             });
+    }
+
+    registerCharacteristicDidChangeCallback (serviceId, characteristicId, callback) {
+        const canonicalServiceId = Number.isInteger(serviceId) ?
+            `0000${serviceId.toString(16)}-0000-1000-8000-00805f9b34fb` : serviceId;
+        if (this.getCharacteristicDidChangeCallbacks(canonicalServiceId, characteristicId, callback)
+            .length === 0) {
+            this._characteristicDidChangeCallback.push({
+                serviceId: canonicalServiceId,
+                characteristicId: characteristicId,
+                callback: callback
+            });
+        }
     }
 
     /**
@@ -131,7 +154,7 @@ class BLE extends JSONRPC {
             params.startNotifications = true;
         }
         if (onCharacteristicChanged) {
-            this._characteristicDidChangeCallback = onCharacteristicChanged;
+            this.registerCharacteristicDidChangeCallback(serviceId, characteristicId, onCharacteristicChanged);
         }
         return this.sendRemoteRequest('read', params)
             .catch(e => {
@@ -181,9 +204,8 @@ class BLE extends JSONRPC {
             }
             break;
         case 'characteristicDidChange':
-            if (this._characteristicDidChangeCallback) {
-                this._characteristicDidChangeCallback(params.message);
-            }
+            this.getCharacteristicDidChangeCallbacks(params.serviceId, params.characteristicId)
+                .forEach(ently => ently.callback(params.message, params.characteristicId, params.serviceId));
             break;
         case 'ping':
             return 42;
