@@ -280,9 +280,9 @@ const compressInputTree = function (block, blocks) {
  * @return {?string} The extension ID, if it exists and is not a core extension.
  */
 const getExtensionIdForOpcode = function (opcode) {
-    // Allowed ID characters are those matching the regular expression [\w-]: A-Z, a-z, 0-9, and hyphen ("-").
     const index = opcode.indexOf('_');
-    const forbiddenSymbols = /[^\w-]/g;
+    // ID characters are encoded by encodeURIComponent().
+    const forbiddenSymbols = /[^\w-%.!~()]/g;
     const prefix = opcode.substring(0, index).replace(forbiddenSymbols, '-');
     if (CORE_EXTENSIONS.indexOf(prefix) === -1) {
         if (prefix !== '') return prefix;
@@ -1275,10 +1275,18 @@ const deserialize = function (json, runtime, zip, isSingleSprite) {
             monitorObjects.map(monitorDesc => deserializeMonitor(monitorDesc, runtime, targets, extensions));
             return targets;
         })
-        .then(targets => ({
-            targets,
-            extensions
-        }));
+        .then(targets => {
+            extensions.extensionIDs.forEach(id => {
+                // Derive extensionURL from extensionID by encodingURIComponent().
+                // '_' was replaced '^' for the extended block info rule.
+                // The URL for builtin extensions will be same as the ID by this conversion.
+                extensions.extensionURLs.set(id, decodeURIComponent(id).replace(/\^/g, '_'));
+            });
+            return {
+                targets,
+                extensions
+            };
+        });
 };
 
 module.exports = {

@@ -1,6 +1,7 @@
 const dispatch = require('../dispatch/central-dispatch');
 const log = require('../util/log');
 const maybeFormatMessage = require('../util/maybe-format-message');
+const formatMessage = require('format-message');
 
 const BlockType = require('./block-type');
 
@@ -94,6 +95,11 @@ class ExtensionManager {
          */
         this.runtime = runtime;
 
+        /**
+         * Placeholder for GUI's extensionLibraryContent.
+         */
+        this.extensionLibraryContent = [];
+
         dispatch.setService('extensions', this).catch(e => {
             log.error(`ExtensionManager was unable to register extension service: ${JSON.stringify(e)}`);
         });
@@ -140,6 +146,8 @@ class ExtensionManager {
      * @returns {Promise} resolved once the extension is loaded and initialized or rejected on failure
      */
     loadExtensionURL (extensionURL) {
+        const runtime = dispatch.services.runtime;
+        runtime.formatMessage = formatMessage;
         if (builtinExtensions.hasOwnProperty(extensionURL)) {
             /** @TODO dupe handling for non-builtin extensions. See commit 670e51d33580e8a2e852b3b038bb3afc282f81b9 */
             if (this.isExtensionLoaded(extensionURL)) {
@@ -155,13 +163,43 @@ class ExtensionManager {
             return Promise.resolve();
         }
 
-        return new Promise((resolve, reject) => {
-            // If we `require` this at the global level it breaks non-webpack targets, including tests
-            const ExtensionWorker = require('worker-loader?name=extension-worker.js!./extension-worker');
-
-            this.pendingExtensions.push({extensionURL, resolve, reject});
-            dispatch.addWorker(new ExtensionWorker());
-        });
+        // To access the runtime even in outer extensions, it loaded by dynamic import() istead of extension-worker.
+        return import(/* webpackIgnore: true */ extensionURL)
+            .then(extensionModule => {
+                const extensionInstance = new extensionModule.extension(runtime);
+                const extensionID = extensionInstance.getInfo().id;
+                if (extensionID !== encodeURIComponent(extensionURL.replace(/_/g, '^'))) {
+                    // Reject by the security risk.
+                    const message =
+                        `Rejected the extension which have different ID '${extensionID}' to URL '${extensionURL}'`;
+                    log.warn(message);
+                    return Promise.resolve();
+                }
+                if (this.isExtensionLoaded(extensionID)) {
+                    // Remove from loaded extensions
+                    const oldServiceName = this._loadedExtensions.get(extensionID);
+                    this._loadedExtensions.delete(extensionID);
+                    // Remove from dispatcher
+                    delete dispatch.services[oldServiceName];
+                    // Remove from extension library
+                    const oldEntryIndex = this.extensionLibraryContent
+                        .findIndex(entry => entry.extensionId === extensionID);
+                    if (oldEntryIndex >= 0) {
+                        this.extensionLibraryContent.splice(oldEntryIndex, 1);
+                    }
+                    // Remove from block info
+                    const oldeBlockInfoIndex = runtime._blockInfo.findIndex(info => info.id === extensionID);
+                    if (oldeBlockInfoIndex >= 0) {
+                        runtime._blockInfo.splice(oldeBlockInfoIndex, 1);
+                    }
+                }
+                const serviceName = this._registerInternalExtension(extensionInstance);
+                if (this.extensionLibraryContent) {
+                    this.extensionLibraryContent.unshift(extensionModule.entry);
+                }
+                this._loadedExtensions.set(extensionID, serviceName);
+                return Promise.resolve();
+            });
     }
 
     /**
@@ -270,7 +308,8 @@ class ExtensionManager {
      */
     _prepareExtensionInfo (serviceName, extensionInfo) {
         extensionInfo = Object.assign({}, extensionInfo);
-        if (!/^[a-z0-9]+$/i.test(extensionInfo.id)) {
+        // ID characters are encoded by encodeURIComponent().
+        if (!/^[\w-%.!~()]+$/i.test(extensionInfo.id)) {
             throw new Error('Invalid extension id');
         }
         extensionInfo.name = extensionInfo.name || extensionInfo.id;
