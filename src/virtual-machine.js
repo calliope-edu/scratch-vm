@@ -353,7 +353,7 @@ class VirtualMachine extends EventEmitter {
 
         return validationPromise
             .then(validatedInput => this.deserializeProject(validatedInput[0], validatedInput[1]))
-            .then(() => this.runtime.emitProjectLoaded())
+            .then(() => this.runtime.handleProjectLoaded())
             .catch(error => {
                 // Intentionally rejecting here (want errors to be handled by caller)
                 if (error.hasOwnProperty('validationError')) {
@@ -1198,6 +1198,13 @@ class VirtualMachine extends EventEmitter {
         if (['var_create', 'var_rename', 'var_delete'].indexOf(e.type) !== -1) {
             this.runtime.getTargetForStage().blocks.blocklyListen(e);
         }
+    }
+
+    /**
+     * Delete all of the flyout blocks.
+     */
+    clearFlyoutBlocks () {
+        this.runtime.flyoutBlocks.deleteAllBlocks();
     }
 
     /**
