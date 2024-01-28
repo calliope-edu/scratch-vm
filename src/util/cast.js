@@ -30,6 +30,9 @@ class Cast {
             }
             return value;
         }
+        // Replace full-width numbers with half-width ones.
+        value = value.replace(/[０-９＋．ｅ]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+        value = value.replace(/[-－﹣−‐⁃‑‒–—﹘―⎯⏤ーｰ─━]/g, '-');
         const n = Number(value);
         if (Number.isNaN(n)) {
             // Scratch treats NaN as 0, when needed as a number.
