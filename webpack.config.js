@@ -16,18 +16,33 @@ const base = {
         filename: '[name].js'
     },
     module: {
-        rules: [{
-            test: /\.js$/,
-            loader: 'babel-loader',
-            include: path.resolve(__dirname, 'src'),
-            query: {
-                presets: [['@babel/preset-env', {targets: {browsers: ['last 3 versions', 'Safari >= 8', 'iOS >= 8']}}]]
+        rules: [
+            {
+                test: /\.js$/,
+                loader: 'babel-loader',
+                include: path.resolve(__dirname, 'src'),
+                query: {
+                    presets: [
+                        [
+                            '@babel/preset-env',
+                            {
+                                targets: {
+                                    browsers: [
+                                        'last 3 versions',
+                                        'Safari >= 8',
+                                        'iOS >= 8'
+                                    ]
+                                }
+                            }
+                        ]
+                    ]
+                }
+            },
+            {
+                test: /\.(mp3|png)$/,
+                loader: 'file-loader'
             }
-        },
-        {
-            test: /\.mp3$/,
-            loader: 'file-loader'
-        }]
+        ]
     },
     optimization: {
         minimizer: [
@@ -87,7 +102,8 @@ module.exports = [
         target: 'web',
         entry: {
             'benchmark': './src/playground/benchmark',
-            'video-sensing-extension-debug': './src/extensions/scratch3_video_sensing/debug'
+            'video-sensing-extension-debug':
+                './src/extensions/scratch3_video_sensing/debug'
         },
         output: {
             path: path.resolve(__dirname, 'playground'),
@@ -100,7 +116,9 @@ module.exports = [
                     loader: 'expose-loader?VirtualMachine'
                 },
                 {
-                    test: require.resolve('./src/extensions/scratch3_video_sensing/debug.js'),
+                    test: require.resolve(
+                        './src/extensions/scratch3_video_sensing/debug.js'
+                    ),
                     loader: 'expose-loader?Scratch3VideoSensingDebug'
                 },
                 {
@@ -129,18 +147,24 @@ module.exports = [
             hints: false
         },
         plugins: base.plugins.concat([
-            new CopyWebpackPlugin([{
-                from: 'node_modules/scratch-blocks/media',
-                to: 'media'
-            }, {
-                from: 'node_modules/scratch-storage/dist/web'
-            }, {
-                from: 'node_modules/scratch-render/dist/web'
-            }, {
-                from: 'node_modules/scratch-svg-renderer/dist/web'
-            }, {
-                from: 'src/playground'
-            }])
+            new CopyWebpackPlugin([
+                {
+                    from: 'node_modules/scratch-blocks/media',
+                    to: 'media'
+                },
+                {
+                    from: 'node_modules/scratch-storage/dist/web'
+                },
+                {
+                    from: 'node_modules/scratch-render/dist/web'
+                },
+                {
+                    from: 'node_modules/scratch-svg-renderer/dist/web'
+                },
+                {
+                    from: 'src/playground'
+                }
+            ])
         ])
     })
 ];

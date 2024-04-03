@@ -39,8 +39,6 @@ const CORE_EXTENSIONS = [
     // 'myBlocks'
 ];
 
-CORE_EXTENSIONS.push('microbitMore');
-
 /**
  * Handles connections between blocks, stage, and extensions.
  * @constructor

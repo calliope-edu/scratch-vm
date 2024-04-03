@@ -26,11 +26,6 @@ const builtinExtensions = {
     gdxfor: () => require('../extensions/scratch3_gdx_for')
 };
 
-builtinExtensions.microbitMore = () => {
-    const ext = require('../extensions/microbitMore');
-    return ext.default ? ext.default : ext;
-};
-
 /**
  * @typedef {object} ArgumentInfo - Information about an extension block argument
  * @property {ArgumentType} type - the type of value this argument can take
