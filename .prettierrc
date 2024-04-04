@@ -4,5 +4,6 @@
     "singleQuote": true,
     "trailingComma": "none",
     "quoteProps": "consistent",
-    "arrowParens": "avoid"
+    "arrowParens": "avoid",
+    "bracketSpacing": false
 }
