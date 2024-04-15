@@ -1,6 +1,6 @@
 {
     "de": {
-        "calliopeMini.name": "Calliope Mini",
+        "calliopeMini.name": "Calliope mini",
         "calliopeMini.whenButtonEvent": "Wenn Taste [NAME] [EVENT] ist",
         "calliopeMini.buttonIDMenu.a": "A",
         "calliopeMini.buttonIDMenu.b": "B",
@@ -88,7 +88,7 @@
         "calliopeMini.selectCommunicationRoute.cancel": "abbrechen"
     },
     "ja": {
-        "calliopeMini.name": "Calliope Mini",
+        "calliopeMini.name": "Calliope mini",
         "calliopeMini.whenButtonEvent": "ボタン [NAME] が [EVENT] とき",
         "calliopeMini.buttonIDMenu.a": "A",
         "calliopeMini.buttonIDMenu.b": "B",
@@ -176,7 +176,7 @@
         "calliopeMini.selectCommunicationRoute.cancel": "やめる"
     },
     "ja-Hira": {
-        "calliopeMini.name": "Calliope Mini",
+        "calliopeMini.name": "Calliope mini",
         "calliopeMini.whenButtonEvent": "[NAME] ボタンが [EVENT] とき",
         "calliopeMini.buttonIDMenu.a": "A",
         "calliopeMini.buttonIDMenu.b": "B",
@@ -264,7 +264,7 @@
         "calliopeMini.selectCommunicationRoute.cancel": "やめる"
     },
     "pt-br": {
-        "calliopeMini.name": "Calliope Mini",
+        "calliopeMini.name": "Calliope mini",
         "calliopeMini.lightLevel": "Intensidade da Luz",
         "calliopeMini.compassHeading": "Está em direção ao Norte",
         "calliopeMini.magneticForce": "Força Magnética [AXIS]",
@@ -277,7 +277,7 @@
         "calliopeMini.digitalValueMenu.High": "ligado"
     },
     "pt": {
-        "calliopeMini.name": "Calliope Mini",
+        "calliopeMini.name": "Calliope mini",
         "calliopeMini.lightLevel": "Intensidade da Luz",
         "calliopeMini.compassHeading": "Está em direção ao Norte",
         "calliopeMini.magneticForce": "Força Magnética [AXIS]",
