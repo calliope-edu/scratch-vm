@@ -2199,6 +2199,8 @@ class MbitMoreBlocks {
             blockIconURI: blockIcon,
             menuIconURI: menuIcon,
             showStatusButton: true,
+            color1: '#75c6c8',
+            color2: '#5d9ea0',
             blocks: [
                 {
                     opcode: 'whenConnectionChanged',
