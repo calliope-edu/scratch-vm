@@ -4,6 +4,7 @@ import Cast from '../../util/cast';
 import log from '../../util/log';
 
 import blockIcon from './block-icon.svg';
+import menuIcon from './menu-icon.svg';
 import translations from './translations.json';
 
 import BLE from './ble';
@@ -2196,6 +2197,7 @@ class MbitMoreBlocks {
             name: MbitMoreBlocks.EXTENSION_NAME,
             extensionURL: MbitMoreBlocks.extensionURL,
             blockIconURI: blockIcon,
+            menuIconURI: menuIcon,
             showStatusButton: true,
             blocks: [
                 {
