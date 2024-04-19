@@ -3,7 +3,7 @@ import BlockType from '../../extension-support/block-type';
 import Cast from '../../util/cast';
 import log from '../../util/log';
 
-import blockIcon from './block-icon.png';
+import blockIcon from './block-icon.svg';
 import translations from './translations.json';
 
 import BLE from './ble';
