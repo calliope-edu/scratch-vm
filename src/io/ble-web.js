@@ -55,7 +55,6 @@ class WebBLE {
             this.disconnect();
         }
 
-        console.log(this._peripheralOptions);
         navigator.bluetooth
             .requestDevice(this._peripheralOptions)
             .then(device => {

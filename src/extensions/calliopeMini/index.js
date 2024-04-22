@@ -1067,7 +1067,8 @@ class MbitMore {
             this._extensionId,
             {
                 filters: [
-                    // {namePrefix: 'Calliope mini'},
+                    {namePrefix: 'Calliope mini'},
+                    {namePrefix: 'BBC micro:bit'},
                     {services: [MM_SERVICE.ID]}
                 ]
             },
