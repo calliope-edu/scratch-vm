@@ -1067,7 +1067,7 @@ class MbitMore {
             this._extensionId,
             {
                 filters: [
-                    {namePrefix: 'Calliope mini'},
+                    // {namePrefix: 'Calliope mini'},
                     {services: [MM_SERVICE.ID]}
                 ]
             },
