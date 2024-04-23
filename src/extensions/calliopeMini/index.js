@@ -378,6 +378,8 @@ const AxisSymbol = {
  */
 const G = 1024;
 
+const pinConfigTimestamps = {};
+
 /**
  * Manage communication with a MicroBit peripheral over a Scrath Link client socket.
  */
@@ -599,6 +601,7 @@ class MbitMore {
      * @return {?Promise} a Promise that resolves when command sending done or undefined if this process was yield.
      */
     displayPixels(matrix, util) {
+        // console.log('displayPixels', matrix, util);
         const cmdSet = [
             {
                 id:
@@ -628,6 +631,7 @@ class MbitMore {
      * @return {?Promise} a Promise that resolves when command sending done or undefined if this process was yield.
      */
     setPullMode(pinIndex, pullMode, util) {
+        console.log('setPullMode', pinIndex, pullMode, util);
         this.config.pinMode[pinIndex] = MbitMorePinMode.INPUT;
         return this.sendCommandSet(
             [
@@ -648,6 +652,7 @@ class MbitMore {
      * @return {?Promise} a Promise that resolves when command sending done or undefined if this process was yield.
      */
     setPinOutput(pinIndex, level, util) {
+        console.log('setPinOutput', pinIndex, level, util);
         this.config.pinMode[pinIndex] = MbitMorePinMode.OUTPUT;
         return this.sendCommandSet(
             [
@@ -670,6 +675,7 @@ class MbitMore {
      * @return {?Promise} a Promise that resolves when command sending done or undefined if this process was yield.
      */
     setPinPWM(pinIndex, level, util) {
+        console.log('setPinPWM', pinIndex, level, util);
         this.config.pinMode[pinIndex] = MbitMorePinMode.PWM;
         const dataView = new DataView(new ArrayBuffer(2));
         dataView.setUint16(0, level, true);
@@ -746,6 +752,7 @@ class MbitMore {
      * @return {?Promise} a Promise that resolves value of analog input or undefined if this process was yield.
      */
     readAnalogIn(pinIndex, util) {
+        console.log('readAnalogIn', pinIndex, util);
         if (!this.isConnected()) {
             return Promise.resolve(0);
         }
@@ -812,6 +819,7 @@ class MbitMore {
                         this.digitalLevel[this.gpio[i]] =
                             (gpioData >> this.gpio[i]) & 1;
                     }
+
                     Object.keys(MbitMoreButtonStateIndex).forEach(name => {
                         this.buttonState[name] =
                             (gpioData >>
@@ -1169,6 +1177,7 @@ class MbitMore {
      * @return {Promise} a Promise that resolves when the data was sent and after send command interval.
      */
     sendCommand(command) {
+        console.log('sendCommand', command);
         const data = uint8ArrayToBase64(
             new Uint8Array([command.id, ...command.message])
         );
@@ -1191,6 +1200,7 @@ class MbitMore {
      * @return {?Promise} a Promise that resolves when the all commands was sent.
      */
     sendCommandSet(commands, util) {
+        // console.log('sendCommandSet', commands, util);
         if (!this.isConnected()) return Promise.resolve();
         if (this.bleBusy) {
             this.bleAccessWaiting = true;
@@ -1282,6 +1292,7 @@ class MbitMore {
      * @private
      */
     onNotify(msg) {
+        console.log('onNotify', msg);
         const data = base64ToUint8Array(msg);
         const dataView = new DataView(data.buffer, 0);
         const dataFormat = dataView.getUint8(19);
@@ -1291,20 +1302,24 @@ class MbitMore {
                 const buttonName =
                     MbitMoreButtonID[dataView.getUint16(1, true)];
                 const eventName = MbitMoreButtonEventID[dataView.getUint8(3)];
+                console.log('button event', buttonName, eventName);
                 this.buttonEvents[buttonName][eventName] = dataView.getUint32(
                     4,
                     true
                 ); // Timestamp
             } else if (actionEventType === MbitMoreActionEvent.GESTURE) {
                 const gestureName = MbitMoreGestureID[dataView.getUint8(1)];
+                console.log('gesture event', gestureName);
                 this.gestureEvents[gestureName] = dataView.getUint32(2, true); // Timestamp
             }
         } else if (dataFormat === MbitMoreDataFormat.PIN_EVENT) {
             const pinIndex = dataView.getUint8(0);
+            console.log('pin event', pinIndex);
             if (!this._pinEvents[pinIndex]) {
                 this._pinEvents[pinIndex] = {};
             }
             const event = dataView.getUint8(1);
+            console.log('pin event', event);
             this._pinEvents[pinIndex][event] = {
                 value: dataView.getUint32(2, true), // timesamp of the edge or duration of the pulse
                 timestamp: Date.now() // received time
@@ -1313,6 +1328,7 @@ class MbitMore {
             const label = new TextDecoder().decode(
                 data.slice(0, 8).filter(char => char !== 0)
             );
+            console.log('number event', label);
             this.receivedData[label] = {
                 content: dataView.getFloat32(8, true),
                 timestamp: Date.now()
@@ -1321,6 +1337,8 @@ class MbitMore {
             const label = new TextDecoder().decode(
                 data.slice(0, 8).filter(char => char !== 0)
             );
+
+            console.log('text event', label);
             this.receivedData[label] = {
                 content: new TextDecoder().decode(
                     data.slice(8, 20).filter(char => char !== 0)
@@ -1349,6 +1367,7 @@ class MbitMore {
      */
     isPinHigh(pin) {
         const level = this.readDigitalLevel(pin);
+        console.log('isPinHigh', pin, level);
         return level === 1;
     }
 
@@ -1361,6 +1380,7 @@ class MbitMore {
         if (!this.isConnected()) {
             return 0;
         }
+        console.log('readDigitalLevel', pin, this.digitalLevel[pin]);
         return this.digitalLevel[pin];
     }
 
@@ -1373,6 +1393,11 @@ class MbitMore {
         if (!this.isConnected()) {
             return false;
         }
+        console.log(
+            'isButtonPressed',
+            buttonName,
+            this.buttonState[buttonName]
+        );
         return this.buttonState[buttonName] === 1;
     }
 
@@ -1398,6 +1423,16 @@ class MbitMore {
         if (this.isPinTouchMode(pinIndex)) {
             return Promise.resolve();
         }
+
+        if (
+            pinConfigTimestamps[pinIndex] &&
+            Date.now() - pinConfigTimestamps[pinIndex] < 1000
+        ) {
+            return Promise.resolve();
+        }
+
+        pinConfigTimestamps[pinIndex] = Date.now();
+
         const sendPromise = this.sendCommandSet(
             [
                 {
@@ -1407,9 +1442,13 @@ class MbitMore {
             ],
             util
         );
+
+        console.log('configTouchPin', pinIndex, util);
+
         if (sendPromise) {
             return sendPromise.then(() => {
                 this.config.pinMode[pinIndex] = MbitMorePinMode.TOUCH;
+                console.log('pinMode', pinIndex, this.config.pinMode[pinIndex]);
             });
         }
         return;
@@ -1424,6 +1463,13 @@ class MbitMore {
         if (!this.isConnected()) {
             return false;
         }
+
+        console.log(
+            'isTouched',
+            buttonName,
+            this.buttonState[buttonName] === 1
+        );
+
         return this.buttonState[buttonName] === 1;
     }
 
@@ -1462,6 +1508,7 @@ class MbitMore {
      * @return {?number} Timestamp of the last event or null.
      */
     getPinEventValue(pinIndex, event) {
+        console.log('getPinEventValue', pinIndex, event);
         if (this._pinEvents[pinIndex] && this._pinEvents[pinIndex][event]) {
             return this._pinEvents[pinIndex][event].value;
         }
@@ -1489,6 +1536,7 @@ class MbitMore {
      * @return {?Promise} a Promise that resolves when command sending done or undefined if this process was yield.
      */
     listenPinEventType(pinIndex, eventType, util) {
+        console.log('listenPinEventType', pinIndex, eventType, util);
         return this.sendCommandSet(
             [
                 {
@@ -1510,6 +1558,7 @@ class MbitMore {
      * @return {?Promise} a Promise that resolves when sending done or undefined if this process was yield.
      */
     sendData(label, content, util) {
+        console.log('sendData', label, content, util);
         const labelData = new Array(8)
             .fill()
             .map((_value, index) => label.charCodeAt(index));
@@ -2827,6 +2876,7 @@ class MbitMoreBlocks {
             buttonName,
             eventName
         );
+
         if (lastTimestamp === null) return false;
         if (!this.prevButtonEvents[buttonName]) return true;
         return lastTimestamp !== this.prevButtonEvents[buttonName][eventName];
@@ -2840,6 +2890,7 @@ class MbitMoreBlocks {
      * @return {boolean} - whether the button is pressed or not.
      */
     isButtonPressed(args) {
+        console.log('isButtonPressed', args);
         const buttonName = args.NAME;
         return this._peripheral.isButtonPressed(buttonName);
     }

@@ -79,7 +79,6 @@ class WebBLE {
             throw new Error('device is not chosen');
         }
 
-        console.log(this._device);
         this._device.gatt
             .connect()
             .then(gattServer => {
