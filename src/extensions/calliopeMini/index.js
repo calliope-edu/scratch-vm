@@ -381,6 +381,18 @@ const G = 1024;
 const pinConfigTimestamps = {};
 
 /**
+ * create menu for pin
+ * @param {number} pinIndex
+ * @returns menu object
+ */
+function createPinMenuForIndex(pinIndex) {
+    return {
+        text: pinIndex < 4 ? `P${pinIndex}` : `C${pinIndex}`,
+        value: pinIndex.toString()
+    };
+}
+
+/**
  * Manage communication with a MicroBit peripheral over a Scrath Link client socket.
  */
 class MbitMore {
@@ -461,13 +473,13 @@ class MbitMore {
          */
         this.receivedData = {};
 
-        this.analogIn = [0, 1, 2];
+        this.analogIn = [0, 1, 2, 3];
         this.analogValue = [];
         this.analogIn.forEach(pinIndex => {
             this.analogValue[pinIndex] = 0;
         });
 
-        this.gpio = [0, 1, 2, 8, 12, 13, 14, 15, 16];
+        this.gpio = [0, 1, 2, 3, 8, 12, 13, 14, 15, 16, 17];
         this.gpio.forEach(pinIndex => {
             this.digitalLevel[pinIndex] = 0;
         });
@@ -1946,21 +1958,11 @@ class MbitMoreBlocks {
     }
 
     get ANALOG_IN_PINS_MENU() {
-        return this._peripheral.analogIn.map(pinIndex =>
-            Object.create({
-                text: `P${pinIndex.toString()}`,
-                value: pinIndex.toString()
-            })
-        );
+        return this._peripheral.analogIn.map(createPinMenuForIndex);
     }
 
     get GPIO_MENU() {
-        return this._peripheral.gpio.map(pinIndex =>
-            Object.create({
-                text: `P${pinIndex.toString()}`,
-                value: pinIndex.toString()
-            })
-        );
+        return this._peripheral.gpio.map(createPinMenuForIndex);
     }
 
     get DIGITAL_VALUE_MENU() {
