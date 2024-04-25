@@ -207,10 +207,11 @@ const MbitMoreButtonStateIndex = {
     P0: 0,
     P1: 1,
     P2: 2,
-    A: 3,
-    B: 4,
-    LOGO: 5,
-    P3: 6
+    P3: 3,
+    A: 4,
+    B: 5,
+    LOGO: 6,
+    
 };
 
 /**
