@@ -31,6 +31,14 @@ const setupTranslations = () => {
     }
 };
 
+const colorHexToRGB = hex => {
+    const R = parseInt(hex.slice(1, 3), 16);
+    const G = parseInt(hex.slice(3, 5), 16);
+    const B = parseInt(hex.slice(5, 7), 16);
+
+    return [G, R, B];
+};
+
 const EXTENSION_ID = 'calliopeMini';
 
 /**
@@ -70,7 +78,8 @@ const BLECommand = {
     CMD_PIN: 0x01,
     CMD_DISPLAY: 0x02,
     CMD_AUDIO: 0x03,
-    CMD_DATA: 0x04
+    CMD_DATA: 0x04,
+    CMD_RGB: 0x05
 };
 
 /**
@@ -2388,16 +2397,31 @@ class MbitMoreBlocks {
                     opcode: 'displayRGB',
                     text: formatMessage({
                         id: 'calliopeMini.displayRGB',
-                        default: 'display RGB [COLOR]',
+                        default: 'display RGB [RGB1] [RGB2] [RGB3]',
                         description:
                             'display a RGB color on the Calliope mini display'
                     }),
                     blockType: BlockType.COMMAND,
                     arguments: {
-                        COLOR: {
+                        RGB1: {
+                            type: ArgumentType.COLOR
+                        },
+                        RGB2: {
+                            type: ArgumentType.COLOR
+                        },
+                        RGB3: {
                             type: ArgumentType.COLOR
                         }
                     }
+                },
+                {
+                    opcode: 'clearRGB',
+                    text: formatMessage({
+                        id: 'calliopeMini.clearRGB',
+                        default: 'clear all RGB-LEDs',
+                        description: 'clear all RGBs'
+                    }),
+                    blockType: BlockType.COMMAND
                 },
                 {
                     opcode: 'displayText',
@@ -3034,7 +3058,26 @@ class MbitMoreBlocks {
     }
 
     displayRGB(args, util) {
-        console.log(args, util);
+        const {RGB1, RGB2, RGB3} = args;
+
+        const message = new Uint8Array([
+            ...colorHexToRGB(RGB1),
+            ...colorHexToRGB(RGB2),
+            ...colorHexToRGB(RGB3)
+        ]);
+
+        this._peripheral.sendCommand({id: BLECommand.CMD_RGB << 5, message});
+    }
+
+    clearRGB() {
+        const black = '#000000';
+        const message = new Uint8Array([
+            ...colorHexToRGB(black),
+            ...colorHexToRGB(black),
+            ...colorHexToRGB(black)
+        ]);
+
+        this._peripheral.sendCommand({id: BLECommand.CMD_RGB << 5, message});
     }
 
     /**
