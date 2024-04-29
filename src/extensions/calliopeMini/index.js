@@ -210,8 +210,7 @@ const MbitMoreButtonStateIndex = {
     P3: 3,
     A: 4,
     B: 5,
-    LOGO: 6,
-    
+    LOGO: 6
 };
 
 /**
@@ -2386,6 +2385,21 @@ class MbitMoreBlocks {
                     }
                 },
                 {
+                    opcode: 'displayRGB',
+                    text: formatMessage({
+                        id: 'calliopeMini.displayRGB',
+                        default: 'display RGB [COLOR]',
+                        description:
+                            'display a RGB color on the Calliope mini display'
+                    }),
+                    blockType: BlockType.COMMAND,
+                    arguments: {
+                        COLOR: {
+                            type: ArgumentType.COLOR
+                        }
+                    }
+                },
+                {
                     opcode: 'displayText',
                     text: formatMessage({
                         id: 'calliopeMini.displayText',
@@ -3017,6 +3031,10 @@ class MbitMoreBlocks {
             }
         }
         return this._peripheral.displayPixels(matrix, util);
+    }
+
+    displayRGB(args, util) {
+        console.log(args, util);
     }
 
     /**
