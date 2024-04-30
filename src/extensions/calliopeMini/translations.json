@@ -33,7 +33,7 @@
         "calliopeMini.gesturesMenu.g8": "8g beschleunigt",
         "calliopeMini.gesturesMenu.shake": "geschüttelt",
         "calliopeMini.displayMatrix": "zeige Bild [MATRIX]",
-        "calliopeMini.displayRGB": "zeige RGB [RGB1] [RGB2] [RGB3]",
+        "calliopeMini.displayRGB": "setze Farben auf [RGB1] [RGB2] [RGB3]",
         "calliopeMini.clearRGB": "eingebaute RGB-LEDs ausschalten",
         "calliopeMini.displayText": "zeige Text [TEXT] mit [DELAY] ms Verzögerung",
         "calliopeMini.clearDisplay": "lösche Display",

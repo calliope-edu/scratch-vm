@@ -36,7 +36,7 @@ const colorHexToRGB = hex => {
     const G = parseInt(hex.slice(3, 5), 16);
     const B = parseInt(hex.slice(5, 7), 16);
 
-    return [G, R, B];
+    return [R, G, B];
 };
 
 const EXTENSION_ID = 'calliopeMini';
@@ -2397,9 +2397,8 @@ class MbitMoreBlocks {
                     opcode: 'displayRGB',
                     text: formatMessage({
                         id: 'calliopeMini.displayRGB',
-                        default: 'display RGB [RGB1] [RGB2] [RGB3]',
-                        description:
-                            'display a RGB color on the Calliope mini display'
+                        default: 'set RGB-LEDs to [RGB1] [RGB2] [RGB3]',
+                        description: 'set RGB-LEDs on the Calliope mini display'
                     }),
                     blockType: BlockType.COMMAND,
                     arguments: {
