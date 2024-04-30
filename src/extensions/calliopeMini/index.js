@@ -2764,60 +2764,60 @@ class MbitMoreBlocks {
                             defaultValue: '0'
                         }
                     }
-                },
-                '---',
-                {
-                    opcode: 'whenDataReceived',
-                    text: formatMessage({
-                        id: 'calliopeMini.whenDataReceived',
-                        default:
-                            'when data with label [LABEL] received from micro:bit',
-                        description:
-                            'when the data which has the label received'
-                    }),
-                    blockType: BlockType.HAT,
-                    arguments: {
-                        LABEL: {
-                            type: ArgumentType.STRING,
-                            defaultValue: 'label-01'
-                        }
-                    }
-                },
-                {
-                    opcode: 'getDataLabeled',
-                    text: formatMessage({
-                        id: 'calliopeMini.getDataLabeled',
-                        default: 'data of label [LABEL]',
-                        description: 'the last data which has the label'
-                    }),
-                    blockType: BlockType.REPORTER,
-                    arguments: {
-                        LABEL: {
-                            type: ArgumentType.STRING,
-                            defaultValue: 'label-01'
-                        }
-                    }
-                },
-                {
-                    opcode: 'sendData',
-                    text: formatMessage({
-                        id: 'calliopeMini.sendData',
-                        default:
-                            'send data [DATA] with label [LABEL] to micro:bit',
-                        description: 'send data content with label to micro:bit'
-                    }),
-                    blockType: BlockType.COMMAND,
-                    arguments: {
-                        LABEL: {
-                            type: ArgumentType.STRING,
-                            defaultValue: 'label-01'
-                        },
-                        DATA: {
-                            type: ArgumentType.STRING,
-                            defaultValue: 'data'
-                        }
-                    }
                 }
+                // '---'
+                // {
+                //     opcode: 'whenDataReceived',
+                //     text: formatMessage({
+                //         id: 'calliopeMini.whenDataReceived',
+                //         default:
+                //             'when data with label [LABEL] received from micro:bit',
+                //         description:
+                //             'when the data which has the label received'
+                //     }),
+                //     blockType: BlockType.HAT,
+                //     arguments: {
+                //         LABEL: {
+                //             type: ArgumentType.STRING,
+                //             defaultValue: 'label-01'
+                //         }
+                //     }
+                // },
+                // {
+                //     opcode: 'getDataLabeled',
+                //     text: formatMessage({
+                //         id: 'calliopeMini.getDataLabeled',
+                //         default: 'data of label [LABEL]',
+                //         description: 'the last data which has the label'
+                //     }),
+                //     blockType: BlockType.REPORTER,
+                //     arguments: {
+                //         LABEL: {
+                //             type: ArgumentType.STRING,
+                //             defaultValue: 'label-01'
+                //         }
+                //     }
+                // },
+                // {
+                //     opcode: 'sendData',
+                //     text: formatMessage({
+                //         id: 'calliopeMini.sendData',
+                //         default:
+                //             'send data [DATA] with label [LABEL] to micro:bit',
+                //         description: 'send data content with label to micro:bit'
+                //     }),
+                //     blockType: BlockType.COMMAND,
+                //     arguments: {
+                //         LABEL: {
+                //             type: ArgumentType.STRING,
+                //             defaultValue: 'label-01'
+                //         },
+                //         DATA: {
+                //             type: ArgumentType.STRING,
+                //             defaultValue: 'data'
+                //         }
+                //     }
+                // }
             ],
             menus: {
                 buttonIDMenu: {
