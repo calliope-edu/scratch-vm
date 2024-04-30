@@ -79,7 +79,7 @@
         "calliopeMini.pinEventTimestampMenu.pulseLow": "Impuls tief",
         "calliopeMini.whenDataReceived": "Wenn Daten mit dem Label [LABEL] vom Calliope mini empfangen werden",
         "calliopeMini.getDataLabeled": "Daten mit dem Label [LABEL]",
-        "calliopeMini.sendData": "sende Daten [DATA] mit dem Label [LABEL] zum micro:bit",
+        "calliopeMini.sendData": "sende Daten [DATA] mit dem Label [LABEL] zum Calliope mini",
         "calliopeMini.connectionStateMenu.connected": "verbunden",
         "calliopeMini.connectionStateMenu.disconnected": "getrennt",
         "calliopeMini.whenConnectionChanged": "Wenn Calliope mini [STATE] ist",
