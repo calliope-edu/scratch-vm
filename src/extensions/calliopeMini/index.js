@@ -79,7 +79,8 @@ const BLECommand = {
     CMD_DISPLAY: 0x02,
     CMD_AUDIO: 0x03,
     CMD_DATA: 0x04,
-    CMD_RGB: 0x05
+    CMD_RGB: 0x05,
+    CMD_MOTOR: 0x06
 };
 
 /**
@@ -2202,6 +2203,27 @@ class MbitMoreBlocks {
         ];
     }
 
+    get MOTOR_MENU() {
+        return [
+            {
+                text: formatMessage({
+                    id: 'calliopeMini.motor.m0',
+                    default: 'm0',
+                    description: 'M0'
+                }),
+                value: 'm0'
+            },
+            {
+                text: formatMessage({
+                    id: 'calliopeMini.motor.m1',
+                    default: 'm1',
+                    description: 'M1'
+                }),
+                value: 'm1'
+            }
+        ];
+    }
+
     /**
      * Construct a set of MicroBit blocks.
      * @param {Runtime} runtime - the Scratch 3.0 runtime.
@@ -2421,6 +2443,25 @@ class MbitMoreBlocks {
                         description: 'clear all RGBs'
                     }),
                     blockType: BlockType.COMMAND
+                },
+                {
+                    opcode: 'controlMotor',
+                    text: formatMessage({
+                        id: 'calliopeMini.controlMotor',
+                        default: 'set [MOTOR] to [SPEED]',
+                        description: 'set motor'
+                    }),
+                    blockType: BlockType.COMMAND,
+                    arguments: {
+                        MOTOR: {
+                            type: ArgumentType.STRING,
+                            menu: 'motorMenu'
+                        },
+                        SPEED: {
+                            type: ArgumentType.NUMBER,
+                            defaultValue: 0
+                        }
+                    }
                 },
                 {
                     opcode: 'displayText',
@@ -2875,6 +2916,10 @@ class MbitMoreBlocks {
                 connectionStateMenu: {
                     acceptReporters: false,
                     items: this.CONNECTION_STATE_MENU
+                },
+                motorMenu: {
+                    acceptReporters: false,
+                    items: this.MOTOR_MENU
                 }
             },
             translationMap: translations
@@ -3077,6 +3122,22 @@ class MbitMoreBlocks {
         ]);
 
         this._peripheral.sendCommand({id: BLECommand.CMD_RGB << 5, message});
+    }
+
+    controlMotor(args, util) {
+        const {MOTOR, SPEED} = args;
+
+        console.log(args);
+
+        const motor = MOTOR === 'm0' ? 0x01 : 0x02;
+        const speed = Math.max(-100, Math.min(Number(SPEED), 100));
+        const direction = speed < 0 ? 1 : 0;
+
+        console.log({motor, speed, direction});
+
+        const message = new Uint8Array([motor, direction, Math.abs(speed)]);
+
+        this._peripheral.sendCommand({id: BLECommand.CMD_MOTOR << 5, message});
     }
 
     /**
