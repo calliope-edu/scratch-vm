@@ -2229,6 +2229,14 @@ class MbitMoreBlocks {
                     description: 'M1'
                 }),
                 value: 'm1'
+            },
+            {
+                text: formatMessage({
+                    id: 'calliopeMini.motor.m0m1',
+                    default: 'm0m1',
+                    description: 'M0 & M1'
+                }),
+                value: 'm0m1'
             }
         ];
     }
