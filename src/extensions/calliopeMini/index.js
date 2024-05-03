@@ -83,6 +83,15 @@ const BLECommand = {
     CMD_MOTOR: 0x06
 };
 
+const MbitMoreMotorCommand = {
+  SET_M0: 0x01,
+  SET_M1: 0x02,
+  SET_M0_M1: 0x03,
+  SET_MOTIONKIT_LEFT: 0x04,
+  SET_MOTIONKIT_RIGHT: 0x05,
+  SET_MOTIONKIT_BOTH: 0x06,
+};
+
 /**
  * Enum for command about gpio pins.
  * @readonly
@@ -3129,15 +3138,21 @@ class MbitMoreBlocks {
 
         console.log(args);
 
-        const motor = MOTOR === 'm0' ? 0x01 : 0x02;
+        const motor = (MOTOR === 'm0') ? MbitMoreMotorCommand.SET_M0 
+                    : (MOTOR === 'm1') ? MbitMoreMotorCommand.SET_M1
+                    : MbitMoreMotorCommand.SET_M0_M1;
         const speed = Math.max(-100, Math.min(Number(SPEED), 100));
         const direction = speed < 0 ? 1 : 0;
 
         console.log({motor, speed, direction});
 
-        const message = new Uint8Array([motor, direction, Math.abs(speed)]);
+        const message = new Uint8Array([direction, Math.abs(speed)]);
 
-        this._peripheral.sendCommand({id: BLECommand.CMD_MOTOR << 5, message});
+        this._peripheral.sendCommand({id: 
+                                                BLECommand.CMD_MOTOR << 5 |
+                                                motor,
+                                                message});
+
     }
 
     /**
