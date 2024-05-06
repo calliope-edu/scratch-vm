@@ -5,6 +5,10 @@ module.exports = {
         browser: true
     },
     rules: {
-        'space-before-function-paren': 'off'
+        'space-before-function-paren': 'off',
+        'operator-linebreak': 'off',
+        'indent': 'off',
+        'no-mixed-operators': 'off',
+        'no-confusing-arrow': 'off'
     }
 };
