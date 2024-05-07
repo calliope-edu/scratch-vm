@@ -34,6 +34,7 @@
         "calliopeMini.gesturesMenu.shake": "geschüttelt",
         "calliopeMini.displayMatrix": "zeige Bild [MATRIX]",
         "calliopeMini.displayRGB": "setze Farben auf [RGB1] [RGB2] [RGB3]",
+        "calliopeMini.controlMotor": "setze Motor [MOTOR] auf [SPEED]",
         "calliopeMini.clearRGB": "eingebaute RGB-LEDs ausschalten",
         "calliopeMini.displayText": "zeige Text [TEXT] mit [DELAY] ms Verzögerung",
         "calliopeMini.clearDisplay": "lösche Display",
