@@ -3005,6 +3005,10 @@ class MbitMoreBlocks {
                     acceptReporters: false,
                     items: this.PIN_MODE_MENU
                 },
+                pinTouchMode: {
+                    acceptReporters: false,
+                    items: this.PIN_TOUCH_MODE_MENU
+                },
                 pinEventTypeMenu: {
                     acceptReporters: false,
                     items: this.PIN_EVENT_TYPE_MENU
