@@ -102,7 +102,8 @@ const MbitMorePinCommand = {
     SET_PWM: 0x02,
     SET_SERVO: 0x03,
     SET_PULL: 0x04,
-    SET_EVENT: 0x05
+    SET_EVENT: 0x05,
+    SET_TOUCH_MODE: 0x06
 };
 
 /**
@@ -137,6 +138,26 @@ const MbitMorePullModeID = {
     NONE: 0,
     DOWN: 1,
     UP: 2
+};
+
+/**
+ * Enum for name of touch mode.
+ * @readonly
+ * @enum {number}
+ */
+const MbitMoreTouchModeName = {
+    CAPACITIVE: 'CAPACITIVE',
+    RESISTIVE: 'RESISTIVE',
+};
+
+/**
+ * Enum for ID of touch mode.
+ * @readonly
+ * @enum {number}
+ */
+const MbitMoreTouchModeID = {
+    RESISTIVE: 0,
+    CAPACITIVE: 1,
 };
 
 /**
@@ -669,6 +690,27 @@ class MbitMore {
                 {
                     id: (BLECommand.CMD_PIN << 5) | MbitMorePinCommand.SET_PULL,
                     message: new Uint8Array([pinIndex, pullMode])
+                }
+            ],
+            util
+        );
+    }
+
+    /**
+     * Set touch mode to the pin.
+     * @param {number} pinIndex - index of the pin
+     * @param {MbitMoreTouchModeID} touchMode - pull mode to set
+     * @param {BlockUtility} util - utility object provided from the runtime
+     * @return {?Promise} a Promise that resolves when command sending done or undefined if this process was yield.
+     */
+    setTouchMode(pinIndex, touchMode, util) {
+        console.log('setTouchMode', pinIndex, touchMode, util);
+        this.config.pinMode[pinIndex] = MbitMorePinMode.TOUCH;
+        return this.sendCommandSet(
+            [
+                {
+                    id: (BLECommand.CMD_PIN << 5) | MbitMorePinCommand.SET_TOUCH_MODE,
+                    message: new Uint8Array([pinIndex, touchMode])
                 }
             ],
             util
@@ -2077,6 +2119,30 @@ class MbitMoreBlocks {
     }
 
     /**
+     * @return {array} - text and values for each pin mode menu element
+     */
+    get PIN_TOUCH_MODE_MENU() {
+        return [
+            {
+                text: formatMessage({
+                    id: 'calliopeMini.pinTouchModeMenu.capacitive',
+                    default: 'Capacitive',
+                    description: 'label for capacitive mode'
+                }),
+                value: MbitMoreTouchModeName.CAPACITIVE
+            },
+            {
+                text: formatMessage({
+                    id: 'calliopeMini.pinTouchModeMenu.resistive',
+                    default: 'Resistive',
+                    description: 'label for resistive mode'
+                }),
+                value: MbitMoreTouchModeName.RESISTIVE
+            }
+        ];
+    }
+
+    /**
      * @return {array} - Menu items for event selector.
      */
     get PIN_EVENT_MENU() {
@@ -2638,6 +2704,27 @@ class MbitMoreBlocks {
                             type: ArgumentType.STRING,
                             menu: 'pinMode',
                             defaultValue: MbitMorePullModeName.UP
+                        }
+                    }
+                },
+                {
+                    opcode: 'setTouchMode',
+                    text: formatMessage({
+                        id: 'calliopeMini.setTouchMode',
+                        default: 'set pin [PIN] to [MODE] touch mode',
+                        description: 'set a pin into the touch mode'
+                    }),
+                    blockType: BlockType.COMMAND,
+                    arguments: {
+                        PIN: {
+                            type: ArgumentType.STRING,
+                            menu: 'gpio',
+                            defaultValue: '0'
+                        },
+                        MODE: {
+                            type: ArgumentType.STRING,
+                            menu: 'pinMode',
+                            defaultValue: MbitMoreTouchModeName.CAPACITIVE
                         }
                     }
                 },
@@ -3329,6 +3416,23 @@ class MbitMoreBlocks {
         return this._peripheral.setPullMode(
             parseInt(args.PIN, 10),
             MbitMorePullModeID[args.MODE],
+            util
+        );
+    }
+
+    /**
+     * Set touch mode of the pin.
+     * @param {object} args - the block's arguments.
+     * @param {number} args.PIN - pin ID.
+     * @param {MbitMorePullModeName} args.MODE - touch mode to set.
+     * @param {BlockUtility} util - utility object provided by the runtime.
+     * @return {promise | undefined} - a Promise that resolves when the command was sent
+     *                                 or undefined if this process was yield.
+     */
+    setTouchMode(args, util) {
+        return this._peripheral.setTouchMode(
+            parseInt(args.PIN, 10),
+            MbitMoreTouchModeID[args.MODE],
             util
         );
     }
