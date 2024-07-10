@@ -2723,7 +2723,7 @@ class MbitMoreBlocks {
                         },
                         MODE: {
                             type: ArgumentType.STRING,
-                            menu: 'pinMode',
+                            menu: 'pinTouchMode',
                             defaultValue: MbitMoreTouchModeName.CAPACITIVE
                         }
                     }
