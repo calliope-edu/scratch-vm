@@ -1230,15 +1230,21 @@ class MbitMore {
      * @param {BlockUtility} util - utility object provided by the runtime.
      * @return {?Promise} a Promise that resolves when the all commands was sent.
      */
-    sendCommandSet(commands, util) {
-        // console.log('sendCommandSet', commands, util);
+    sendCommandSet(commands, util, force = false) {
         if (!this.isConnected()) return Promise.resolve();
         if (this.bleBusy) {
             this.bleAccessWaiting = true;
             if (util) {
                 util.yield(); // re-try this call after a while.
+                if (force) {
+                    return new Promise((resolve) =>
+                        setTimeout(() => resolve(this.sendCommandSet(commands, util, true)), 1)
+                    );
+                }
             } else {
-                setTimeout(() => this.sendCommandSet(commands, util), 1);
+                return new Promise((resolve) =>
+                    setTimeout(() => resolve(this.sendCommandSet(commands, util)), 1)
+                );
             }
             return; // Do not return Promise.resolve() to re-try.
         }
@@ -1471,10 +1477,9 @@ class MbitMore {
                     message: new Uint8Array([pinIndex, 1])
                 }
             ],
-            util
+            util,
+            true
         );
-
-        // console.log('configTouchPin', pinIndex, util);
 
         if (sendPromise) {
             return sendPromise.then(() => {
