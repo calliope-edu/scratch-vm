@@ -1244,7 +1244,6 @@ class MbitMore {
                 if (force) {
                     console.log("Retry sending command");
                     setTimeout(() => this.sendCommandSet(commands, util, force), 20);
-                    return;
                 }
             } else {
                 setTimeout(() => this.sendCommandSet(commands, util, force), 20);
