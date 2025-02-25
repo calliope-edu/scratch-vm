@@ -861,6 +861,7 @@ class MbitMore {
                     this.temperature = dataView.getUint8(5) - 128;
                     this.soundLevel = dataView.getUint8(6);
                     this.resetConnectionTimeout();
+                    console.log("Update State")
                     resolve(this);
                 });
         });
@@ -1228,20 +1229,20 @@ class MbitMore {
      * Send multiple commands sequentially.
      * @param {Array.<{id: number, message: Uint8Array}>} commands array of command.
      * @param {BlockUtility} util - utility object provided by the runtime.
+     * @param {boolean} force - force send command even if the micro:bit is busy.
      * @return {?Promise} a Promise that resolves when the all commands was sent.
      */
     sendCommandSet(commands, util, force = false) {
-
         if (force) {
-            this.microbitUpdateInterval = 500; // milliseconds
+            this.microbitUpdateInterval = 500;
         }
-
         if (!this.isConnected()) return Promise.resolve();
         if (this.bleBusy) {
             this.bleAccessWaiting = true;
             if (util) {
                 util.yield(); // re-try this call after a while.
                 if (force) {
+                    console.log("Retry sending command")
                     return new Promise((resolve) =>
                         setTimeout(() => resolve(this.sendCommandSet(commands, util, true)), 1)
                     );
@@ -1280,6 +1281,7 @@ class MbitMore {
                             this.microbitUpdateInterval = 50;
                         }
                     }
+                    console.log("Send command done")
                     resolve();
                 });
         });
