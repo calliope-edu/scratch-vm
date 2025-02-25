@@ -798,6 +798,11 @@ class MbitMore {
             if (util) util.yield(); // re-try this call after a while.
             return; // Do not return Promise.resolve() to re-try.
         }
+        // Set pull mode to 'None' to reactivate analog functionality only if not in input mode
+        if (this.config.pinMode[pinIndex] !== MbitMorePinMode.INPUT) {
+            // console.log("set to input");
+            this.setPullMode(pinIndex, MbitMorePullModeID['None'], null);
+        }
         this.bleBusy = true;
         this.bleBusyTimeoutID = window.setTimeout(() => {
             this.bleBusy = false;
@@ -816,7 +821,7 @@ class MbitMore {
                     const data = base64ToUint8Array(result.message);
                     const dataView = new DataView(data.buffer, 0);
                     this.analogValue[pinIndex] = dataView.getUint16(0, true);
-                    this.analogInLastUpdated = Date.now();
+                    this.analogInLastUpdated[pinIndex] = Date.now();
                     resolve(this.analogValue[pinIndex]);
                 })
         );
