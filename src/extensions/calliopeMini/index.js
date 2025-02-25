@@ -1244,11 +1244,11 @@ class MbitMore {
                 if (force) {
                     console.log("Retry sending command")
                     return new Promise((resolve) =>
-                        setTimeout(() => resolve(this.sendCommandSet(commands, util, true)), 1)
+                        setTimeout(() => resolve(this.sendCommandSet(commands, util, true)), 20)
                     );
                 }
             } else {
-                setTimeout(() => resolve(this.sendCommandSet(commands, util)), 1);
+                setTimeout(() => resolve(this.sendCommandSet(commands, util)), 20);
             }
             return; // Do not return Promise.resolve() to re-try.
         }
