@@ -1231,6 +1231,11 @@ class MbitMore {
      * @return {?Promise} a Promise that resolves when the all commands was sent.
      */
     sendCommandSet(commands, util, force = false) {
+
+        if (force) {
+            this.microbitUpdateInterval = 500; // milliseconds
+        }
+
         if (!this.isConnected()) return Promise.resolve();
         if (this.bleBusy) {
             this.bleAccessWaiting = true;
@@ -1242,9 +1247,7 @@ class MbitMore {
                     );
                 }
             } else {
-                return new Promise((resolve) =>
-                    setTimeout(() => resolve(this.sendCommandSet(commands, util)), 1)
-                );
+                setTimeout(() => resolve(this.sendCommandSet(commands, util)), 1);
             }
             return; // Do not return Promise.resolve() to re-try.
         }
@@ -1270,6 +1273,13 @@ class MbitMore {
                 .finally(() => {
                     this.bleBusy = false;
                     this.bleAccessWaiting = false;
+                    if(force){
+                        if (this.hardware === MbitMoreHardwareVersion.MICROBIT_V1) {
+                            this.microbitUpdateInterval = 100;
+                        } else {
+                            this.microbitUpdateInterval = 50;
+                        }
+                    }
                     resolve();
                 });
         });
