@@ -1427,7 +1427,7 @@ class MbitMore {
         // Set pull mode to 'None' to reactivate analog functionality only if not in input mode
         if (this.config.pinMode[pin] !== MbitMorePinMode.INPUT) {
             // console.log("set to input");
-            this.setPullMode(pin, MbitMorePullModeID['Down'], null);
+            this.setPullMode(pin, MbitMorePullModeID['DOWN'], null);
         }
         const level = this.readDigitalLevel(pin);
         // console.log('isPinHigh', pin, level);
