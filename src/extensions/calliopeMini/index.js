@@ -2237,7 +2237,7 @@ class MbitMoreBlocks {
             {
                 text: formatMessage({
                     id: 'calliopeMini.motor.m0',
-                    default: 'm0',
+                    default: 'M0',
                     description: 'M0'
                 }),
                 value: 'm0'
@@ -2245,7 +2245,7 @@ class MbitMoreBlocks {
             {
                 text: formatMessage({
                     id: 'calliopeMini.motor.m1',
-                    default: 'm1',
+                    default: 'M1',
                     description: 'M1'
                 }),
                 value: 'm1'
@@ -2253,7 +2253,7 @@ class MbitMoreBlocks {
             {
                 text: formatMessage({
                     id: 'calliopeMini.motor.m0m1',
-                    default: 'm0m1',
+                    default: 'M0 & M1',
                     description: 'M0 & M1'
                 }),
                 value: 'm0m1'
@@ -2485,7 +2485,7 @@ class MbitMoreBlocks {
                     opcode: 'controlMotor',
                     text: formatMessage({
                         id: 'calliopeMini.controlMotor',
-                        default: 'set [MOTOR] to [SPEED]',
+                        default: 'set motor [MOTOR] to [SPEED]%',
                         description: 'set motor'
                     }),
                     blockType: BlockType.COMMAND,
