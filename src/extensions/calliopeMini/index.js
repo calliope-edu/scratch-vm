@@ -1420,6 +1420,11 @@ class MbitMore {
     isPinHigh(pin) {
         const level = this.readDigitalLevel(pin);
         // console.log('isPinHigh', pin, level);
+        // Set pull mode to 'None' to reactivate analog functionality only if not in input mode
+        if (this.config.pinMode[pin] !== MbitMorePinMode.INPUT) {
+            // console.log("set to input");
+            this.setPullMode(pin, MbitMorePullModeID['None'], null);
+        }
         return level === 1;
     }
 
@@ -2725,7 +2730,7 @@ class MbitMoreBlocks {
                     opcode: 'setServo',
                     text: formatMessage({
                         id: 'calliopeMini.setServo',
-                        default: 'set [PIN] Servo [ANGLE]',
+                        default: 'set [PIN] Servo [ANGLE]°',
                         description:
                             'set pin to Servo mode and the angle(0 to 180)'
                     }),
