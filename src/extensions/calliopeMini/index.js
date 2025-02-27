@@ -175,6 +175,12 @@ const MbitMorePinMode = {
     TOUCH: 'TOUCH'
 };
 
+
+const MbitMoreTouchType = {
+    CAPACITIVE: 'CAPACITIVE',
+    RESISTIVE: 'RESISTIVE'
+};
+
 /**
  * Enum for ID of buttons
  * @readonly
@@ -567,6 +573,7 @@ class MbitMore {
         this.config = {};
         this.config.mic = false;
         this.config.pinMode = {};
+        this.config.isResistiveTouch = false
     }
 
     /**
@@ -1244,6 +1251,7 @@ class MbitMore {
      * @return {?Promise} a Promise that resolves when the all commands was sent.
      */
     sendCommandSet(commands, util, force = false) {
+        console.log(commands)
         if (force) {
             this.microbitUpdateInterval = 500;
         }
@@ -1474,6 +1482,22 @@ class MbitMore {
         return this.config.pinMode[pinIndex] === MbitMorePinMode.TOUCH;
     }
 
+    configTouchType(touchType) {
+        console.log("configTouchType", touchType, this.config.isResistiveTouch);
+        if (!this.isConnected() || this.hardware === MbitMoreHardwareVersion.MICROBIT_V1) {
+            return Promise.resolve();
+        }
+        const isResistiveTouch = touchType === MbitMoreTouchType.RESISTIVE;
+        if (this.config.isResistiveTouch !== isResistiveTouch) {
+            this.config.isResistiveTouch = isResistiveTouch;
+            // Reset pin modes for touch pins
+            [0, 1, 2, 3].forEach(pin => {
+                this.config.pinMode[pin] = undefined;
+            });
+        }
+        return Promise.resolve();
+    }
+
     /**
      * Configurate touch mode of the pin.
      * @param {number} pinIndex - index of the pin as a button.
@@ -1501,7 +1525,7 @@ class MbitMore {
             [
                 {
                     id: (BLECommand.CMD_CONFIG << 5) | MbitMoreConfig.TOUCH,
-                    message: new Uint8Array([pinIndex, 1])
+                    message: new Uint8Array([pinIndex, 1, this.config.isResistiveTouch])
                 }
             ],
             util,
@@ -1948,6 +1972,30 @@ class MbitMoreBlocks {
                 text: 'P3',
                 value: MbitMoreButtonName.P3
             }
+        ];
+    }
+
+    /** 
+     * @return {array} - Menu items for touch type selector.
+    */
+    get TOUCH_TYPE_MENU() {
+        return [
+            {
+                text: formatMessage({
+                    id: 'calliopeMini.touchTypeMenu.resistive',
+                    default: 'Capacitive',
+                    description: 'label for capacitive touch type'
+                }),
+                value: MbitMoreTouchType.CAPACITIVE
+            },
+            {
+                text: formatMessage({
+                    id: 'calliopeMini.touchTypeMenu.capacitive',
+                    default: 'Resistive',
+                    description: 'label for resistive touch types'
+                }),
+                value: MbitMoreTouchType.RESISTIVE
+            },
         ];
     }
 
@@ -2426,6 +2474,22 @@ class MbitMoreBlocks {
                             type: ArgumentType.STRING,
                             menu: 'touchIDMenu',
                             defaultValue: MbitMoreButtonName.LOGO
+                        }
+                    }
+                },
+                {
+                    opcode: 'configTouchType',
+                    text: formatMessage({
+                        id: 'calliopeMini.configTouchType',
+                        default: 'set Touch Type to [TYPE]',
+                        description: 'set the touch type to capacitive or resistive touch'
+                    }),
+                    blockType: BlockType.COMMAND,
+                    arguments: {
+                        TYPE: {
+                            type: ArgumentType.STRING,
+                            menu: 'touchTypeMenu',
+                            defaultValue: MbitMoreTouchType.CAPACITIVE
                         }
                     }
                 },
@@ -2915,6 +2979,10 @@ class MbitMoreBlocks {
                     acceptReporters: false,
                     items: this.TOUCH_ID_MENU
                 },
+                touchTypeMenu: {
+                    acceptReporters: false,
+                    items: this.TOUCH_TYPE_MENU
+                },
                 touchEventMenu: {
                     acceptReporters: false,
                     items: this.TOUCH_EVENT_MENU
@@ -3055,6 +3123,7 @@ class MbitMoreBlocks {
      * @return {boolean|Promise<boolean>|undefined} - true if touched or promise that or undefinde if yield.
      */
     isPinTouched(args, util) {
+        // console.log('isPinTouched', this.config.isResistiveTouch)
         const buttonName = args.NAME;
         if (buttonName === MbitMoreButtonName.LOGO) {
             return this._peripheral.isTouched(buttonName);
@@ -3070,6 +3139,16 @@ class MbitMoreBlocks {
         );
         if (!configPromise) return; // This thread was yielded.
         return configPromise.then(() => this._peripheral.isTouched(buttonName));
+    }
+
+    /**
+     * Configure touch type for the pins.
+     * @param {object} args - The block's arguments.
+     * @param {string} args.TYPE - Type of touch configuration (resistive or capacitive).
+     * @return {Promise} - A promise that resolves when the configuration is complete.
+     */
+    configTouchType(args) {
+        return this._peripheral.configTouchType(args.TYPE);
     }
 
     /**
