@@ -42,7 +42,7 @@
         "calliopeMini.lightLevel": "Lichtstärke",
         "calliopeMini.temperature": "Temperatur °C ",
         "calliopeMini.compassHeading": "Kompassrichtung ° ",
-        "calliopeMini.magneticForce": "Magnetkraft µT [AXIS]",
+        "calliopeMini.magneticForce": "Magnetkraft µT",
         "calliopeMini.acceleration": "Beschleunigung mg [AXIS]",
         "calliopeMini.pitch": "Pitch",
         "calliopeMini.roll": "Roll",

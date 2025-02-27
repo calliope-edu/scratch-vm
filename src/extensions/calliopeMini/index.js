@@ -2609,13 +2609,6 @@ class MbitMoreBlocks {
                         description: 'value of magnetic force (micro tesla)'
                     }),
                     blockType: BlockType.REPORTER,
-                    arguments: {
-                        AXIS: {
-                            type: ArgumentType.STRING,
-                            menu: 'axis',
-                            defaultValue: AxisSymbol.Absolute
-                        }
-                    }
                 },
                 {
                     opcode: 'getAcceleration',
