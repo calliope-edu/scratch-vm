@@ -872,7 +872,7 @@ class MbitMore {
                     this.temperature = dataView.getUint8(5) - 128;
                     this.soundLevel = dataView.getUint8(6);
                     this.resetConnectionTimeout();
-                    console.log("Update State")
+                    // console.log("Update State")
                     resolve(this);
                 });
         });
@@ -1253,7 +1253,7 @@ class MbitMore {
             if (util) {
                 util.yield(); // re-try this call after a while.
                 if (force) {
-                    console.log("Retry sending command");
+                    // console.log("Retry sending command");
                     setTimeout(() => this.sendCommandSet(commands, util, force), 20);
                     return true;
                 }
@@ -1291,7 +1291,7 @@ class MbitMore {
                             this.microbitUpdateInterval = 50;
                         }
                     }
-                    console.log("Send command done")
+                    // console.log("Send command done")
                     resolve();
                 });
         });
