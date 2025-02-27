@@ -1255,6 +1255,7 @@ class MbitMore {
                 if (force) {
                     console.log("Retry sending command");
                     setTimeout(() => this.sendCommandSet(commands, util, force), 20);
+                    return true;
                 }
             } else {
                 setTimeout(() => this.sendCommandSet(commands, util, force), 20);
@@ -3043,8 +3044,7 @@ class MbitMoreBlocks {
             MbitMoreButtonPinIndex[buttonName],
             util
         );
-        if (!configPromise) return; // This thread was yielded.
-        return configPromise.then(() => this.whenButtonEvent(args));
+        return false;
     }
 
     /**
