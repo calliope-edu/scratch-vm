@@ -492,7 +492,7 @@ class MbitMore {
          */
         this.receivedData = {};
 
-        this.analogIn = [0, 1, 2, 3];
+        this.analogIn = [0, 1, 2, 16];
         this.analogValue = [];
         this.analogIn.forEach(pinIndex => {
             this.analogValue[pinIndex] = 0;
@@ -663,7 +663,6 @@ class MbitMore {
      */
     setPullMode(pinIndex, pullMode, util) {
         // console.log('setPullMode', pinIndex, pullMode, util);
-        this.config.pinMode[pinIndex] = MbitMorePinMode.INPUT;
         return this.sendCommandSet(
             [
                 {
@@ -672,7 +671,10 @@ class MbitMore {
                 }
             ],
             util
-        );
+        ).then(() => {
+            this.config.pinMode[pinIndex] = MbitMorePinMode.INPUT;
+            // console.log('pinMode', pinIndex, this.config.pinMode[pinIndex]);
+        });
     }
 
     /**
@@ -683,8 +685,6 @@ class MbitMore {
      * @return {?Promise} a Promise that resolves when command sending done or undefined if this process was yield.
      */
     setPinOutput(pinIndex, level, util) {
-        // console.log('setPinOutput', pinIndex, level, util);
-        this.config.pinMode[pinIndex] = MbitMorePinMode.OUTPUT;
         return this.sendCommandSet(
             [
                 {
@@ -695,7 +695,10 @@ class MbitMore {
                 }
             ],
             util
-        );
+        ).then(() => {
+            // console.log('setPinOutput', pinIndex, level, util);
+            this.config.pinMode[pinIndex] = MbitMorePinMode.OUTPUT;
+        });
     }
 
     /**
@@ -706,8 +709,6 @@ class MbitMore {
      * @return {?Promise} a Promise that resolves when command sending done or undefined if this process was yield.
      */
     setPinPWM(pinIndex, level, util) {
-        // console.log('setPinPWM', pinIndex, level, util);
-        this.config.pinMode[pinIndex] = MbitMorePinMode.PWM;
         const dataView = new DataView(new ArrayBuffer(2));
         dataView.setUint16(0, level, true);
         return this.sendCommandSet(
@@ -722,7 +723,10 @@ class MbitMore {
                 }
             ],
             util
-        );
+        ).then(() => {
+            // console.log('setPinPWM', pinIndex, level, util);
+            this.config.pinMode[pinIndex] = MbitMorePinMode.PWM;
+    });
     }
 
     /**
@@ -736,7 +740,6 @@ class MbitMore {
      * @return {?Promise} a Promise that resolves when command sending done or undefined if this process was yield.
      */
     setPinServo(pinIndex, angle, range, center, util) {
-        this.config.pinMode[pinIndex] = MbitMorePinMode.SERVO;
         if (!range || range < 0) range = 0;
         if (!center || center < 0) center = 0;
         const dataView = new DataView(new ArrayBuffer(6));
@@ -761,9 +764,12 @@ class MbitMore {
                 }
             ],
             util
-        );
+        ).then(() => {
+            // console.log('setPinServo', pinIndex, level, util);
+            this.config.pinMode[pinIndex] = MbitMorePinMode.SERVO;
+        });
     }
-
+ 
     /**
      * Read light level from the light sensor.
      * @param {object} util - utility object provided by the runtime.
@@ -798,6 +804,11 @@ class MbitMore {
             if (util) util.yield(); // re-try this call after a while.
             return; // Do not return Promise.resolve() to re-try.
         }
+        // Set pull mode to 'None' to reactivate analog functionality only if not in input mode
+        if (this.config.pinMode[pinIndex] !== MbitMorePinMode.INPUT) {
+            // console.log("set to input");
+            this.setPullMode(pinIndex, MbitMorePullModeID['None'], null);
+        }
         this.bleBusy = true;
         this.bleBusyTimeoutID = window.setTimeout(() => {
             this.bleBusy = false;
@@ -816,7 +827,7 @@ class MbitMore {
                     const data = base64ToUint8Array(result.message);
                     const dataView = new DataView(data.buffer, 0);
                     this.analogValue[pinIndex] = dataView.getUint16(0, true);
-                    this.analogInLastUpdated = Date.now();
+                    this.analogInLastUpdated[pinIndex] = Date.now();
                     resolve(this.analogValue[pinIndex]);
                 })
         );
@@ -861,6 +872,7 @@ class MbitMore {
                     this.temperature = dataView.getUint8(5) - 128;
                     this.soundLevel = dataView.getUint8(6);
                     this.resetConnectionTimeout();
+                    // console.log("Update State")
                     resolve(this);
                 });
         });
@@ -1228,17 +1240,25 @@ class MbitMore {
      * Send multiple commands sequentially.
      * @param {Array.<{id: number, message: Uint8Array}>} commands array of command.
      * @param {BlockUtility} util - utility object provided by the runtime.
+     * @param {boolean} force - force send command even if the micro:bit is busy.
      * @return {?Promise} a Promise that resolves when the all commands was sent.
      */
-    sendCommandSet(commands, util) {
-        // console.log('sendCommandSet', commands, util);
+    sendCommandSet(commands, util, force = false) {
+        if (force) {
+            this.microbitUpdateInterval = 500;
+        }
         if (!this.isConnected()) return Promise.resolve();
         if (this.bleBusy) {
             this.bleAccessWaiting = true;
             if (util) {
                 util.yield(); // re-try this call after a while.
+                if (force) {
+                    // console.log("Retry sending command");
+                    setTimeout(() => this.sendCommandSet(commands, util, force), 20);
+                    return true;
+                }
             } else {
-                setTimeout(() => this.sendCommandSet(commands, util), 1);
+                setTimeout(() => this.sendCommandSet(commands, util, force), 20);
             }
             return; // Do not return Promise.resolve() to re-try.
         }
@@ -1264,6 +1284,14 @@ class MbitMore {
                 .finally(() => {
                     this.bleBusy = false;
                     this.bleAccessWaiting = false;
+                    if(force){
+                        if (this.hardware === MbitMoreHardwareVersion.MICROBIT_V1) {
+                            this.microbitUpdateInterval = 100;
+                        } else {
+                            this.microbitUpdateInterval = 50;
+                        }
+                    }
+                    // console.log("Send command done")
                     resolve();
                 });
         });
@@ -1397,6 +1425,11 @@ class MbitMore {
      * @return {boolean} - whether the pin is high or not.
      */
     isPinHigh(pin) {
+        // Set pull mode to 'None' to reactivate analog functionality only if not in input mode
+        if (this.config.pinMode[pin] !== MbitMorePinMode.INPUT) {
+            // console.log("set to input");
+            this.setPullMode(pin, MbitMorePullModeID['DOWN'], null);
+        }
         const level = this.readDigitalLevel(pin);
         // console.log('isPinHigh', pin, level);
         return level === 1;
@@ -1471,10 +1504,9 @@ class MbitMore {
                     message: new Uint8Array([pinIndex, 1])
                 }
             ],
-            util
+            util,
+            true
         );
-
-        // console.log('configTouchPin', pinIndex, util);
 
         if (sendPromise) {
             return sendPromise.then(() => {
@@ -2217,7 +2249,7 @@ class MbitMoreBlocks {
             {
                 text: formatMessage({
                     id: 'calliopeMini.motor.m0',
-                    default: 'm0',
+                    default: 'M0',
                     description: 'M0'
                 }),
                 value: 'm0'
@@ -2225,7 +2257,7 @@ class MbitMoreBlocks {
             {
                 text: formatMessage({
                     id: 'calliopeMini.motor.m1',
-                    default: 'm1',
+                    default: 'M1',
                     description: 'M1'
                 }),
                 value: 'm1'
@@ -2233,7 +2265,7 @@ class MbitMoreBlocks {
             {
                 text: formatMessage({
                     id: 'calliopeMini.motor.m0m1',
-                    default: 'm0m1',
+                    default: 'M0 & M1',
                     description: 'M0 & M1'
                 }),
                 value: 'm0m1'
@@ -2465,7 +2497,7 @@ class MbitMoreBlocks {
                     opcode: 'controlMotor',
                     text: formatMessage({
                         id: 'calliopeMini.controlMotor',
-                        default: 'set [MOTOR] to [SPEED]',
+                        default: 'set motor [MOTOR] to [SPEED]%',
                         description: 'set motor'
                     }),
                     blockType: BlockType.COMMAND,
@@ -2578,13 +2610,6 @@ class MbitMoreBlocks {
                         description: 'value of magnetic force (micro tesla)'
                     }),
                     blockType: BlockType.REPORTER,
-                    arguments: {
-                        AXIS: {
-                            type: ArgumentType.STRING,
-                            menu: 'axis',
-                            defaultValue: AxisSymbol.Absolute
-                        }
-                    }
                 },
                 {
                     opcode: 'getAcceleration',
@@ -2705,7 +2730,7 @@ class MbitMoreBlocks {
                     opcode: 'setServo',
                     text: formatMessage({
                         id: 'calliopeMini.setServo',
-                        default: 'set [PIN] Servo [ANGLE]',
+                        default: 'set [PIN] Servo [ANGLE]°',
                         description:
                             'set pin to Servo mode and the angle(0 to 180)'
                     }),
@@ -3019,8 +3044,7 @@ class MbitMoreBlocks {
             MbitMoreButtonPinIndex[buttonName],
             util
         );
-        if (!configPromise) return; // This thread was yielded.
-        return configPromise.then(() => this.whenButtonEvent(args));
+        return false;
     }
 
     /**
