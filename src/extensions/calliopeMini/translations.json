@@ -88,7 +88,10 @@
         "calliopeMini.selectCommunicationRoute.bluetooth": "Bluetooth",
         "calliopeMini.selectCommunicationRoute.usb": "USB",
         "calliopeMini.selectCommunicationRoute.connect": "verbinden",
-        "calliopeMini.selectCommunicationRoute.cancel": "abbrechen"
+        "calliopeMini.selectCommunicationRoute.cancel": "abbrechen",
+        "calliopeMini.configTouchType": "setze alle Pins auf Berührungsmodus [TYPE]",
+        "calliopeMini.touchTypeMenu.resistive": "Resistiv",
+        "calliopeMini.touchTypeMenu.capacitive": "Kapazitiv"
     },
     "ja": {
         "calliopeMini.name": "Calliope mini",
@@ -178,7 +181,10 @@
         "calliopeMini.selectCommunicationRoute.bluetooth": "Bluetooth",
         "calliopeMini.selectCommunicationRoute.usb": "USB",
         "calliopeMini.selectCommunicationRoute.connect": "つなぐ",
-        "calliopeMini.selectCommunicationRoute.cancel": "やめる"
+        "calliopeMini.selectCommunicationRoute.cancel": "やめる",
+        "calliopeMini.configTouchType": "すべてのピンをタッチモード [TYPE] に設定する",
+        "calliopeMini.touchTypeMenu.resistive": "抵抗式",
+        "calliopeMini.touchTypeMenu.capacitive": "静電容量式"
     },
     "ja-Hira": {
         "calliopeMini.name": "Calliope mini",
@@ -268,7 +274,10 @@
         "calliopeMini.selectCommunicationRoute.bluetooth": "むせん",
         "calliopeMini.selectCommunicationRoute.usb": "ゆうせん",
         "calliopeMini.selectCommunicationRoute.connect": "つなぐ",
-        "calliopeMini.selectCommunicationRoute.cancel": "やめる"
+        "calliopeMini.selectCommunicationRoute.cancel": "やめる",
+        "calliopeMini.configTouchType": "すべてのピンをタッチモード [TYPE] にせっていする",
+        "calliopeMini.touchTypeMenu.resistive": "ていこうしき",
+        "calliopeMini.touchTypeMenu.capacitive": "せいでんようしき"
     },
     "pt-br": {
         "calliopeMini.name": "Calliope mini",
@@ -281,7 +290,10 @@
         "calliopeMini.setAnalogOut": "Definir pino PWM[PIN]com[LEVEL]",
         "calliopeMini.setServo": "Definir Servo no pino [PIN]com ângulo de [ANGLE]॰",
         "calliopeMini.digitalValueMenu.Low": "desligado",
-        "calliopeMini.digitalValueMenu.High": "ligado"
+        "calliopeMini.digitalValueMenu.High": "ligado",
+        "calliopeMini.configTouchType": "Definir todos os pinos para o modo de toque [TYPE]",
+        "calliopeMini.touchTypeMenu.resistive": "Resistivo",
+        "calliopeMini.touchTypeMenu.capacitive": "Capacitivo"
     },
     "pt": {
         "calliopeMini.name": "Calliope mini",
@@ -294,7 +306,10 @@
         "calliopeMini.setAnalogOut": "Definir pino PWM[PIN]com[LEVEL]",
         "calliopeMini.setServo": "Definir Servo no pino [PIN]com ângulo de [ANGLE]॰",
         "calliopeMini.digitalValueMenu.Low": "desligado",
-        "calliopeMini.digitalValueMenu.High": "ligado"
+        "calliopeMini.digitalValueMenu.High": "ligado",
+        "calliopeMini.configTouchType": "Definir todos os pinos para o modo de toque [TYPE]",
+        "calliopeMini.touchTypeMenu.resistive": "Resistivo",
+        "calliopeMini.touchTypeMenu.capacitive": "Capacitivo"
     },
     "es": {
         "calliopeMini.name": "Calliope mini",
@@ -385,7 +400,10 @@
         "calliopeMini.selectCommunicationRoute.bluetooth": "Bluetooth",
         "calliopeMini.selectCommunicationRoute.usb": "USB",
         "calliopeMini.selectCommunicationRoute.connect": "conectar",
-        "calliopeMini.selectCommunicationRoute.cancel": "cancelar"
+        "calliopeMini.selectCommunicationRoute.cancel": "cancelar",
+        "calliopeMini.configTouchType": "Configurar todos los pines al modo táctil [TYPE]",
+        "calliopeMini.touchTypeMenu.resistive": "Resistivo",
+        "calliopeMini.touchTypeMenu.capacitivo": "Capacitivo"
     },
     "fr": {
         "calliopeMini.name": "Calliope mini",
@@ -476,7 +494,10 @@
         "calliopeMini.selectCommunicationRoute.bluetooth": "Bluetooth",
         "calliopeMini.selectCommunicationRoute.usb": "USB",
         "calliopeMini.selectCommunicationRoute.connect": "se connecter",
-        "calliopeMini.selectCommunicationRoute.cancel": "annuler"
+        "calliopeMini.selectCommunicationRoute.cancel": "annuler",
+        "calliopeMini.configTouchType": "Définir tous les broches en mode tactile [TYPE]",
+        "calliopeMini.touchTypeMenu.resistive": "Résistif",
+        "calliopeMini.touchTypeMenu.capacitive": "Capacitif"
     },
     "it": {
         "calliopeMini.name": "Calliope mini",
@@ -567,7 +588,10 @@
         "calliopeMini.selectCommunicationRoute.bluetooth": "Bluetooth",
         "calliopeMini.selectCommunicationRoute.usb": "USB",
         "calliopeMini.selectCommunicationRoute.connect": "connetti",
-        "calliopeMini.selectCommunicationRoute.cancel": "annulla"
+        "calliopeMini.selectCommunicationRoute.cancel": "annulla",
+        "calliopeMini.configTouchType": "Imposta tutti i pin in modalità tocco [TYPE]",
+        "calliopeMini.touchTypeMenu.resistive": "Resistivo",
+        "calliopeMini.touchTypeMenu.capacitive": "Capacitivo"
     },
     "nl": {
         "calliopeMini.name": "Calliope mini",
@@ -658,7 +682,10 @@
         "calliopeMini.selectCommunicationRoute.bluetooth": "Bluetooth",
         "calliopeMini.selectCommunicationRoute.usb": "USB",
         "calliopeMini.selectCommunicationRoute.connect": "verbinden",
-        "calliopeMini.selectCommunicationRoute.cancel": "annuleren"
+        "calliopeMini.selectCommunicationRoute.cancel": "annuleren",
+        "calliopeMini.configTouchType": "Stel alle pinnen in op aanraakmodus [TYPE]",
+        "calliopeMini.touchTypeMenu.resistive": "Resistief",
+        "calliopeMini.touchTypeMenu.capacitive": "Capacitief"
     },
     "dk": {
         "calliopeMini.name": "Calliope mini",
@@ -749,7 +776,10 @@
         "calliopeMini.selectCommunicationRoute.bluetooth": "Bluetooth",
         "calliopeMini.selectCommunicationRoute.usb": "USB",
         "calliopeMini.selectCommunicationRoute.connect": "forbind",
-        "calliopeMini.selectCommunicationRoute.cancel": "annuller"
+        "calliopeMini.selectCommunicationRoute.cancel": "annuller",
+        "calliopeMini.configTouchType": "Indstil alle pins til berøringsmodus [TYPE]",
+        "calliopeMini.touchTypeMenu.resistive": "Resistiv",
+        "calliopeMini.touchTypeMenu.capacitive": "Kapacitiv"
     },
     "se": {
         "calliopeMini.name": "Calliope mini",
@@ -840,7 +870,10 @@
         "calliopeMini.selectCommunicationRoute.bluetooth": "Bluetooth",
         "calliopeMini.selectCommunicationRoute.usb": "USB",
         "calliopeMini.selectCommunicationRoute.connect": "anslut",
-        "calliopeMini.selectCommunicationRoute.cancel": "avbryt"
+        "calliopeMini.selectCommunicationRoute.cancel": "avbryt",
+        "calliopeMini.configTouchType": "Ställ in alla stift till beröringsläge [TYPE]",
+        "calliopeMini.touchTypeMenu.resistive": "Resistiv",
+        "calliopeMini.touchTypeMenu.capacitive": "Kapacitiv"
     },
     "no": {
         "calliopeMini.name": "Calliope mini",
@@ -931,7 +964,10 @@
         "calliopeMini.selectCommunicationRoute.bluetooth": "Bluetooth",
         "calliopeMini.selectCommunicationRoute.usb": "USB",
         "calliopeMini.selectCommunicationRoute.connect": "koble til",
-        "calliopeMini.selectCommunicationRoute.cancel": "avbryt"
+        "calliopeMini.selectCommunicationRoute.cancel": "avbryt",
+        "calliopeMini.configTouchType": "Sett alle pinner til berøringsmodus [TYPE]",
+        "calliopeMini.touchTypeMenu.resistive": "Resistiv",
+        "calliopeMini.touchTypeMenu.capacitive": "Kapasitiv"
     },
     "el": {
         "calliopeMini.name": "Calliope mini",
@@ -1022,7 +1058,10 @@
         "calliopeMini.selectCommunicationRoute.bluetooth": "Bluetooth",
         "calliopeMini.selectCommunicationRoute.usb": "USB",
         "calliopeMini.selectCommunicationRoute.connect": "σύνδεση",
-        "calliopeMini.selectCommunicationRoute.cancel": "ακύρωση"
+        "calliopeMini.selectCommunicationRoute.cancel": "ακύρωση",
+        "calliopeMini.configTouchType": "Ορίστε όλες τις ακίδες σε λειτουργία αφής [TYPE]",
+        "calliopeMini.touchTypeMenu.resistive": "Αντιστατικό",
+        "calliopeMini.touchTypeMenu.capacitive": "Χωρητικό"
     },
     "pl": {
         "calliopeMini.name": "Calliope mini",
@@ -1113,7 +1152,10 @@
         "calliopeMini.selectCommunicationRoute.bluetooth": "Bluetooth",
         "calliopeMini.selectCommunicationRoute.usb": "USB",
         "calliopeMini.selectCommunicationRoute.connect": "połącz",
-        "calliopeMini.selectCommunicationRoute.cancel": "anuluj"
+        "calliopeMini.selectCommunicationRoute.cancel": "anuluj",
+        "calliopeMini.configTouchType": "Ustaw wszystkie piny w trybie dotykowym [TYPE]",
+        "calliopeMini.touchTypeMenu.resistive": "Rezystancyjny",
+        "calliopeMini.touchTypeMenu.capacitive": "Pojemnościowy"
     },
     "uk": {
         "calliopeMini.name": "Calliope mini",
@@ -1204,7 +1246,10 @@
         "calliopeMini.selectCommunicationRoute.bluetooth": "Bluetooth",
         "calliopeMini.selectCommunicationRoute.usb": "USB",
         "calliopeMini.selectCommunicationRoute.connect": "підключити",
-        "calliopeMini.selectCommunicationRoute.cancel": "скасувати"
+        "calliopeMini.selectCommunicationRoute.cancel": "скасувати",
+        "calliopeMini.configTouchType": "Встановіть всі контакти в режим дотику [TYPE]",
+        "calliopeMini.touchTypeMenu.resistive": "Резистивний",
+        "calliopeMini.touchTypeMenu.capacitive": "Ємнісний"
     },
     "ru": {
         "calliopeMini.name": "Calliope mini",
@@ -1295,7 +1340,10 @@
         "calliopeMini.selectCommunicationRoute.bluetooth": "Bluetooth",
         "calliopeMini.selectCommunicationRoute.usb": "USB",
         "calliopeMini.selectCommunicationRoute.connect": "подключить",
-        "calliopeMini.selectCommunicationRoute.cancel": "отмена"
+        "calliopeMini.selectCommunicationRoute.cancel": "отмена",
+        "calliopeMini.configTouchType": "Установить все контакты в режим касания [TYPE]",
+        "calliopeMini.touchTypeMenu.resistive": "Резистивный",
+        "calliopeMini.touchTypeMenu.capacitive": "Емкостный"
     },
     "ar": {
         "calliopeMini.name": "Calliope mini",
@@ -1386,7 +1434,10 @@
         "calliopeMini.selectCommunicationRoute.bluetooth": "بلوتوث",
         "calliopeMini.selectCommunicationRoute.usb": "USB",
         "calliopeMini.selectCommunicationRoute.connect": "اتصال",
-        "calliopeMini.selectCommunicationRoute.cancel": "إلغاء"
+        "calliopeMini.selectCommunicationRoute.cancel": "إلغاء",
+        "calliopeMini.configTouchType": "تعيين جميع المسامير إلى وضع اللمس [TYPE]",
+        "calliopeMini.touchTypeMenu.resistive": "مقاوم",
+        "calliopeMini.touchTypeMenu.capacitive": "سعوي"
     },
     "he": {
         "calliopeMini.name": "Calliope mini",
@@ -1477,7 +1528,10 @@
         "calliopeMini.selectCommunicationRoute.bluetooth": "בלוטות'",
         "calliopeMini.selectCommunicationRoute.usb": "USB",
         "calliopeMini.selectCommunicationRoute.connect": "התחבר",
-        "calliopeMini.selectCommunicationRoute.cancel": "ביטול"
+        "calliopeMini.selectCommunicationRoute.cancel": "ביטול",
+        "calliopeMini.configTouchType": "הגדר את כל הפינים למצב מגע [TYPE]",
+        "calliopeMini.touchTypeMenu.resistive": "נגדי",
+        "calliopeMini.touchTypeMenu.capacitive": "קיבולי"
     },
     "ca": {
         "calliopeMini.name": "Calliope mini",
@@ -1568,7 +1622,10 @@
         "calliopeMini.selectCommunicationRoute.bluetooth": "Bluetooth",
         "calliopeMini.selectCommunicationRoute.usb": "USB",
         "calliopeMini.selectCommunicationRoute.connect": "connecta",
-        "calliopeMini.selectCommunicationRoute.cancel": "cancel·la"
+        "calliopeMini.selectCommunicationRoute.cancel": "cancel·la",
+        "calliopeMini.configTouchType": "Configura tots els pins en mode tàctil [TYPE]",
+        "calliopeMini.touchTypeMenu.resistive": "Resistiu",
+        "calliopeMini.touchTypeMenu.capacitive": "Capacitiu"
     },
     "cs": {
         "calliopeMini.name": "Calliope mini",
@@ -1659,7 +1716,10 @@
         "calliopeMini.selectCommunicationRoute.bluetooth": "Bluetooth",
         "calliopeMini.selectCommunicationRoute.usb": "USB",
         "calliopeMini.selectCommunicationRoute.connect": "připojit",
-        "calliopeMini.selectCommunicationRoute.cancel": "zrušit"
+        "calliopeMini.selectCommunicationRoute.cancel": "zrušit",
+        "calliopeMini.configTouchType": "Nastavit všechny piny do dotykového režimu [TYPE]",
+        "calliopeMini.touchTypeMenu.resistive": "Rezistivní",
+        "calliopeMini.touchTypeMenu.capacitive": "Kapacitní"
     },
     "et": {
         "calliopeMini.name": "Calliope mini",
@@ -1750,7 +1810,10 @@
         "calliopeMini.selectCommunicationRoute.bluetooth": "Bluetooth",
         "calliopeMini.selectCommunicationRoute.usb": "USB",
         "calliopeMini.selectCommunicationRoute.connect": "ühenda",
-        "calliopeMini.selectCommunicationRoute.cancel": "tühista"
+        "calliopeMini.selectCommunicationRoute.cancel": "tühista",
+        "calliopeMini.configTouchType": "Määra kõik tihvtid puuterežiimi [TYPE]",
+        "calliopeMini.touchTypeMenu.resistive": "Takistuslik",
+        "calliopeMini.touchTypeMenu.capacitive": "Mahtuvuslik"
     },
     "lt": {
         "calliopeMini.name": "Calliope mini",
@@ -1841,7 +1904,10 @@
         "calliopeMini.selectCommunicationRoute.bluetooth": "Bluetooth",
         "calliopeMini.selectCommunicationRoute.usb": "USB",
         "calliopeMini.selectCommunicationRoute.connect": "prisijungti",
-        "calliopeMini.selectCommunicationRoute.cancel": "atšaukti"
+        "calliopeMini.selectCommunicationRoute.cancel": "atšaukti",
+        "calliopeMini.configTouchType": "Nustatykite visus kaiščius į lietimo režimą [TYPE]",
+        "calliopeMini.touchTypeMenu.resistive": "Varžinis",
+        "calliopeMini.touchTypeMenu.capacitive": "Talpinis"
     },
     "lv": {
         "calliopeMini.name": "Calliope mini",
@@ -1932,7 +1998,10 @@
         "calliopeMini.selectCommunicationRoute.bluetooth": "Bluetooth",
         "calliopeMini.selectCommunicationRoute.usb": "USB",
         "calliopeMini.selectCommunicationRoute.connect": "savienot",
-        "calliopeMini.selectCommunicationRoute.cancel": "atcelt"
+        "calliopeMini.selectCommunicationRoute.cancel": "atcelt",
+        "calliopeMini.configTouchType": "Iestatiet visus tapas uz pieskāriena režīmu [TYPE]",
+        "calliopeMini.touchTypeMenu.resistive": "Pretestības",
+        "calliopeMini.touchTypeMenu.capacitive": "Kapacitatīvs"
     },
     "fi": {
         "calliopeMini.name": "Calliope mini",
@@ -2023,6 +2092,9 @@
         "calliopeMini.selectCommunicationRoute.bluetooth": "Bluetooth",
         "calliopeMini.selectCommunicationRoute.usb": "USB",
         "calliopeMini.selectCommunicationRoute.connect": "yhdistä",
-        "calliopeMini.selectCommunicationRoute.cancel": "peruuta"
+        "calliopeMini.selectCommunicationRoute.cancel": "peruuta",
+        "calliopeMini.configTouchType": "Aseta kaikki nastat kosketustilaan [TYPE]",
+        "calliopeMini.touchTypeMenu.resistive": "Resistiivinen",
+        "calliopeMini.touchTypeMenu.capacitive": "Kapasitiivinen"
     }
 }
