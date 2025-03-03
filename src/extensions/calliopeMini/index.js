@@ -2481,7 +2481,7 @@ class MbitMoreBlocks {
                     opcode: 'configTouchType',
                     text: formatMessage({
                         id: 'calliopeMini.configTouchType',
-                        default: 'set Touch Type to [TYPE]',
+                        default: 'set all pins to touch mode [TYPE]',
                         description: 'set the touch type to capacitive or resistive touch'
                     }),
                     blockType: BlockType.COMMAND,
