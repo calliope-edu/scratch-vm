@@ -1287,6 +1287,7 @@ class MbitMore {
                 })
                 .catch(err => {
                     log.log(err);
+                    console.log('disconnect error C', err);
                     this._ble.handleDisconnectError(err);
                 })
                 .finally(() => {
@@ -1309,6 +1310,7 @@ class MbitMore {
      * Starts reading data from peripheral after BLE has connected to it.
      */
     _onConnect() {
+        setTimeout(() => {
         this._ble
             .read(MM_SERVICE.ID, MM_SERVICE.COMMAND_CH, false)
             .then(result => {
@@ -1350,7 +1352,11 @@ class MbitMore {
                 this.startUpdater();
                 this.resetConnectionTimeout();
             })
-            .catch(err => this._ble.handleDisconnectError(err));
+            .catch(err => {
+                console.log('disconnect error B', err);
+                this._ble.handleDisconnectError(err)}
+            );
+        }, 500); // 500ms delay
     }
 
     /**
@@ -1422,7 +1428,10 @@ class MbitMore {
     resetConnectionTimeout() {
         if (this._timeoutID) window.clearTimeout(this._timeoutID);
         this._timeoutID = window.setTimeout(
-            () => this._ble.handleDisconnectError(BLEDataStoppedError),
+            () => {
+                console.log('disconnect error A', err);
+                this._ble.handleDisconnectError(BLEDataStoppedError)
+            },
             BLETimeout
         );
     }
