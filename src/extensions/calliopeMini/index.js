@@ -1309,48 +1309,50 @@ class MbitMore {
      * Starts reading data from peripheral after BLE has connected to it.
      */
     _onConnect() {
-        this._ble
-            .read(MM_SERVICE.ID, MM_SERVICE.COMMAND_CH, false)
-            .then(result => {
-                if (!result) {
-                    throw new Error('Config is not readable');
-                }
-                const data = base64ToUint8Array(result.message);
-                const dataView = new DataView(data.buffer, 0);
-                this.hardware = dataView.getUint8(0);
-                this.protocol = dataView.getUint8(1);
-                this.route = dataView.getUint8(2);
-                this._ble.startNotifications(
-                    MM_SERVICE.ID,
-                    MM_SERVICE.ACTION_EVENT_CH,
-                    this.onNotify
-                );
-                this._ble.startNotifications(
-                    MM_SERVICE.ID,
-                    MM_SERVICE.PIN_EVENT_CH,
-                    this.onNotify
-                );
-                if (this.hardware === MbitMoreHardwareVersion.MICROBIT_V1) {
-                    this.microbitUpdateInterval = 100; // milliseconds
-                } else {
+        setTimeout(() => {
+            this._ble
+                .read(MM_SERVICE.ID, MM_SERVICE.COMMAND_CH, false)
+                .then(result => {
+                    if (!result) {
+                        throw new Error('Config is not readable');
+                    }
+                    const data = base64ToUint8Array(result.message);
+                    const dataView = new DataView(data.buffer, 0);
+                    this.hardware = dataView.getUint8(0);
+                    this.protocol = dataView.getUint8(1);
+                    this.route = dataView.getUint8(2);
                     this._ble.startNotifications(
                         MM_SERVICE.ID,
-                        MM_SERVICE.MESSAGE_CH,
+                        MM_SERVICE.ACTION_EVENT_CH,
                         this.onNotify
                     );
-                    this.microbitUpdateInterval = 50; // milliseconds
-                }
-                if (this.route === CommunicationRoute.SERIAL) {
-                    this.sendCommandInterval = 100; // milliseconds
-                } else {
-                    this.sendCommandInterval = 30; // milliseconds
-                }
-                this.initConfig();
-                this.bleBusy = false;
-                this.startUpdater();
-                this.resetConnectionTimeout();
-            })
-            .catch(err => this._ble.handleDisconnectError(err));
+                    this._ble.startNotifications(
+                        MM_SERVICE.ID,
+                        MM_SERVICE.PIN_EVENT_CH,
+                        this.onNotify
+                    );
+                    if (this.hardware === MbitMoreHardwareVersion.MICROBIT_V1) {
+                        this.microbitUpdateInterval = 100; // milliseconds
+                    } else {
+                        this._ble.startNotifications(
+                            MM_SERVICE.ID,
+                            MM_SERVICE.MESSAGE_CH,
+                            this.onNotify
+                        );
+                        this.microbitUpdateInterval = 50; // milliseconds
+                    }
+                    if (this.route === CommunicationRoute.SERIAL) {
+                        this.sendCommandInterval = 100; // milliseconds
+                    } else {
+                        this.sendCommandInterval = 30; // milliseconds
+                    }
+                    this.initConfig();
+                    this.bleBusy = false;
+                    this.startUpdater();
+                    this.resetConnectionTimeout();
+                })
+                .catch(err => this._ble.handleDisconnectError(err));
+        }, 500); // 500ms delay
     }
 
     /**
