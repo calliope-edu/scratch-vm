@@ -1127,7 +1127,7 @@ class MbitMore {
                 filters: [
                     {namePrefix: 'Calliope mini'},
                     {namePrefix: 'BBC micro:bit'},
-                    {services: [MM_SERVICE.ID]}
+                    // {services: [MM_SERVICE.ID]}
                 ]
             },
             this._onConnect,
