@@ -3232,7 +3232,7 @@ class MbitMoreBlocks {
             ...colorHexToRGB(RGB3)
         ]);
 
-        this._peripheral.sendCommand({id: BLECommand.CMD_RGB << 5, message});
+        this._peripheral.sendCommandSet([{id: BLECommand.CMD_RGB << 5, message}]);
     }
 
     clearRGB() {
@@ -3243,7 +3243,7 @@ class MbitMoreBlocks {
             ...colorHexToRGB(black)
         ]);
 
-        this._peripheral.sendCommand({id: BLECommand.CMD_RGB << 5, message});
+        this._peripheral.sendCommandSet([{id: BLECommand.CMD_RGB << 5, message}]);
     }
 
     controlMotor(args) {
@@ -3260,10 +3260,10 @@ class MbitMoreBlocks {
 
         const message = new Uint8Array([direction, Math.abs(speed)]);
 
-        this._peripheral.sendCommand({
+        this._peripheral.sendCommandSet([{
             id: (BLECommand.CMD_MOTOR << 5) | motor,
             message
-        });
+        }]);
     }
 
     /**
