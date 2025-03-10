@@ -3223,7 +3223,7 @@ class MbitMoreBlocks {
         return this._peripheral.displayPixels(matrix, util);
     }
 
-    displayRGB(args) {
+    displayRGB(args, util) {
         const {RGB1, RGB2, RGB3} = args;
 
         const message = new Uint8Array([
@@ -3232,10 +3232,10 @@ class MbitMoreBlocks {
             ...colorHexToRGB(RGB3)
         ]);
 
-        this._peripheral.sendCommandSet([{id: BLECommand.CMD_RGB << 5, message}]);
+        this._peripheral.sendCommandSet([{id: BLECommand.CMD_RGB << 5, message}], util);
     }
 
-    clearRGB() {
+    clearRGB(util) {
         const black = '#000000';
         const message = new Uint8Array([
             ...colorHexToRGB(black),
@@ -3243,10 +3243,10 @@ class MbitMoreBlocks {
             ...colorHexToRGB(black)
         ]);
 
-        this._peripheral.sendCommandSet([{id: BLECommand.CMD_RGB << 5, message}]);
+        this._peripheral.sendCommandSet([{id: BLECommand.CMD_RGB << 5, message}], util);
     }
 
-    controlMotor(args) {
+    controlMotor(args, util) {
         const {MOTOR, SPEED} = args;
 
         const motor =
@@ -3263,7 +3263,7 @@ class MbitMoreBlocks {
         this._peripheral.sendCommandSet([{
             id: (BLECommand.CMD_MOTOR << 5) | motor,
             message
-        }]);
+        }], util);
     }
 
     /**
