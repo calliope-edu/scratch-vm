@@ -1251,7 +1251,7 @@ class MbitMore {
      * @return {?Promise} a Promise that resolves when the all commands was sent.
      */
     sendCommandSet(commands, util, force = false) {
-        console.log(commands)
+        // console.log(commands)
         if (force) {
             this.microbitUpdateInterval = 500;
         }
@@ -1485,7 +1485,7 @@ class MbitMore {
     }
 
     configTouchType(touchType) {
-        console.log("configTouchType", touchType, this.config.isResistiveTouch);
+        // console.log("configTouchType", touchType, this.config.isResistiveTouch);
         if (!this.isConnected() || this.hardware === MbitMoreHardwareVersion.MICROBIT_V1) {
             return Promise.resolve();
         }
@@ -3223,7 +3223,7 @@ class MbitMoreBlocks {
         return this._peripheral.displayPixels(matrix, util);
     }
 
-    displayRGB(args) {
+    displayRGB(args, util) {
         const {RGB1, RGB2, RGB3} = args;
 
         const message = new Uint8Array([
@@ -3232,10 +3232,10 @@ class MbitMoreBlocks {
             ...colorHexToRGB(RGB3)
         ]);
 
-        this._peripheral.sendCommand({id: BLECommand.CMD_RGB << 5, message});
+        this._peripheral.sendCommandSet([{id: BLECommand.CMD_RGB << 5, message}], util);
     }
 
-    clearRGB() {
+    clearRGB(args, util) {
         const black = '#000000';
         const message = new Uint8Array([
             ...colorHexToRGB(black),
@@ -3243,10 +3243,10 @@ class MbitMoreBlocks {
             ...colorHexToRGB(black)
         ]);
 
-        this._peripheral.sendCommand({id: BLECommand.CMD_RGB << 5, message});
+        this._peripheral.sendCommandSet([{id: BLECommand.CMD_RGB << 5, message}], util);
     }
 
-    controlMotor(args) {
+    controlMotor(args, util) {
         const {MOTOR, SPEED} = args;
 
         const motor =
@@ -3260,10 +3260,10 @@ class MbitMoreBlocks {
 
         const message = new Uint8Array([direction, Math.abs(speed)]);
 
-        this._peripheral.sendCommand({
+        this._peripheral.sendCommandSet([{
             id: (BLECommand.CMD_MOTOR << 5) | motor,
             message
-        });
+        }], util);
     }
 
     /**
