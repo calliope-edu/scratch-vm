@@ -1251,7 +1251,7 @@ class MbitMore {
      * @return {?Promise} a Promise that resolves when the all commands was sent.
      */
     sendCommandSet(commands, util, force = false) {
-        console.log(commands)
+        // console.log(commands)
         if (force) {
             this.microbitUpdateInterval = 500;
         }
@@ -1485,7 +1485,7 @@ class MbitMore {
     }
 
     configTouchType(touchType) {
-        console.log("configTouchType", touchType, this.config.isResistiveTouch);
+        // console.log("configTouchType", touchType, this.config.isResistiveTouch);
         if (!this.isConnected() || this.hardware === MbitMoreHardwareVersion.MICROBIT_V1) {
             return Promise.resolve();
         }
@@ -3235,7 +3235,7 @@ class MbitMoreBlocks {
         this._peripheral.sendCommandSet([{id: BLECommand.CMD_RGB << 5, message}], util);
     }
 
-    clearRGB(util) {
+    clearRGB(args, util) {
         const black = '#000000';
         const message = new Uint8Array([
             ...colorHexToRGB(black),
