@@ -1984,7 +1984,7 @@ class MbitMoreBlocks {
         return [
             {
                 text: formatMessage({
-                    id: 'calliopeMini.touchTypeMenu.resistive',
+                    id: 'calliopeMini.touchTypeMenu.capacitive',
                     default: 'Capacitive',
                     description: 'label for capacitive touch type'
                 }),
@@ -1992,7 +1992,7 @@ class MbitMoreBlocks {
             },
             {
                 text: formatMessage({
-                    id: 'calliopeMini.touchTypeMenu.capacitive',
+                    id: 'calliopeMini.touchTypeMenu.resistive',
                     default: 'Resistive',
                     description: 'label for resistive touch types'
                 }),
