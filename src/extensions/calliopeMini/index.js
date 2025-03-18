@@ -879,7 +879,7 @@ class MbitMore {
                     this.temperature = dataView.getUint8(5) - 128;
                     this.soundLevel = dataView.getUint8(6);
                     this.resetConnectionTimeout();
-                    // console.log("Update State")
+                    console.log("Update State")
                     resolve(this);
                 });
         });
@@ -1261,7 +1261,7 @@ class MbitMore {
             if (util) {
                 util.yield(); // re-try this call after a while.
                 if (force) {
-                    // console.log("Retry sending command");
+                    console.log("Retry sending command");
                     setTimeout(() => this.sendCommandSet(commands, util, force), 20);
                     return true;
                 }
@@ -1287,6 +1287,7 @@ class MbitMore {
                 })
                 .catch(err => {
                     log.log(err);
+                    console.log('disconnect error C', err);
                     this._ble.handleDisconnectError(err);
                 })
                 .finally(() => {
@@ -1299,7 +1300,7 @@ class MbitMore {
                             this.microbitUpdateInterval = 50;
                         }
                     }
-                    // console.log("Send command done")
+                    console.log("Send command done")
                     resolve();
                 });
         });
@@ -1310,48 +1311,51 @@ class MbitMore {
      */
     _onConnect() {
         setTimeout(() => {
-            this._ble
-                .read(MM_SERVICE.ID, MM_SERVICE.COMMAND_CH, false)
-                .then(result => {
-                    if (!result) {
-                        throw new Error('Config is not readable');
-                    }
-                    const data = base64ToUint8Array(result.message);
-                    const dataView = new DataView(data.buffer, 0);
-                    this.hardware = dataView.getUint8(0);
-                    this.protocol = dataView.getUint8(1);
-                    this.route = dataView.getUint8(2);
+        this._ble
+            .read(MM_SERVICE.ID, MM_SERVICE.COMMAND_CH, false)
+            .then(result => {
+                if (!result) {
+                    throw new Error('Config is not readable');
+                }
+                const data = base64ToUint8Array(result.message);
+                const dataView = new DataView(data.buffer, 0);
+                this.hardware = dataView.getUint8(0);
+                this.protocol = dataView.getUint8(1);
+                this.route = dataView.getUint8(2);
+                this._ble.startNotifications(
+                    MM_SERVICE.ID,
+                    MM_SERVICE.ACTION_EVENT_CH,
+                    this.onNotify
+                );
+                this._ble.startNotifications(
+                    MM_SERVICE.ID,
+                    MM_SERVICE.PIN_EVENT_CH,
+                    this.onNotify
+                );
+                if (this.hardware === MbitMoreHardwareVersion.MICROBIT_V1) {
+                    this.microbitUpdateInterval = 100; // milliseconds
+                } else {
                     this._ble.startNotifications(
                         MM_SERVICE.ID,
-                        MM_SERVICE.ACTION_EVENT_CH,
+                        MM_SERVICE.MESSAGE_CH,
                         this.onNotify
                     );
-                    this._ble.startNotifications(
-                        MM_SERVICE.ID,
-                        MM_SERVICE.PIN_EVENT_CH,
-                        this.onNotify
-                    );
-                    if (this.hardware === MbitMoreHardwareVersion.MICROBIT_V1) {
-                        this.microbitUpdateInterval = 100; // milliseconds
-                    } else {
-                        this._ble.startNotifications(
-                            MM_SERVICE.ID,
-                            MM_SERVICE.MESSAGE_CH,
-                            this.onNotify
-                        );
-                        this.microbitUpdateInterval = 50; // milliseconds
-                    }
-                    if (this.route === CommunicationRoute.SERIAL) {
-                        this.sendCommandInterval = 100; // milliseconds
-                    } else {
-                        this.sendCommandInterval = 30; // milliseconds
-                    }
-                    this.initConfig();
-                    this.bleBusy = false;
-                    this.startUpdater();
-                    this.resetConnectionTimeout();
-                })
-                .catch(err => this._ble.handleDisconnectError(err));
+                    this.microbitUpdateInterval = 50; // milliseconds
+                }
+                if (this.route === CommunicationRoute.SERIAL) {
+                    this.sendCommandInterval = 100; // milliseconds
+                } else {
+                    this.sendCommandInterval = 30; // milliseconds
+                }
+                this.initConfig();
+                this.bleBusy = false;
+                this.startUpdater();
+                this.resetConnectionTimeout();
+            })
+            .catch(err => {
+                console.log('disconnect error B', err);
+                this._ble.handleDisconnectError(err)}
+            );
         }, 500); // 500ms delay
     }
 
@@ -1424,7 +1428,10 @@ class MbitMore {
     resetConnectionTimeout() {
         if (this._timeoutID) window.clearTimeout(this._timeoutID);
         this._timeoutID = window.setTimeout(
-            () => this._ble.handleDisconnectError(BLEDataStoppedError),
+            () => {
+                console.log('disconnect error A', err);
+                this._ble.handleDisconnectError(BLEDataStoppedError)
+            },
             BLETimeout
         );
     }
