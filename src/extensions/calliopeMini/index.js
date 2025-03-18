@@ -1349,8 +1349,11 @@ class MbitMore {
                 }
                 this.initConfig();
                 this.bleBusy = false;
-                this.startUpdater();
                 this.resetConnectionTimeout();
+                setTimeout(
+                    () => this.startUpdater(),
+                    this.microbitUpdateInterval
+                );
             })
             .catch(err => {
                 console.log('disconnect error B', err);
