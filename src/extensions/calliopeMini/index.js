@@ -1348,8 +1348,11 @@ class MbitMore {
                     }
                     this.initConfig();
                     this.bleBusy = false;
-                    this.startUpdater();
                     this.resetConnectionTimeout();
+                    setTimeout(
+                        () => this.startUpdater(),
+                        this.microbitUpdateInterval
+                    );
                 })
                 .catch(err => this._ble.handleDisconnectError(err));
         }, 500); // 500ms delay
