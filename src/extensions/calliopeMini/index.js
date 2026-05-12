@@ -7,8 +7,7 @@ import blockIcon from './block-icon.svg';
 import menuIcon from './menu-icon.svg';
 import translations from './translations.json';
 
-import BLE from './ble';
-import WebSerial from './serial-web';
+import CalliopeRemote from '../../io/calliopeRemote';
 
 const uint8ArrayToBase64 = array => window.btoa(String.fromCharCode(...array));
 const base64ToUint8Array = base64 => {
@@ -1116,64 +1115,26 @@ class MbitMore {
     }
 
     /**
-     * Start to scan Bluetooth LE devices to find micro:bit with MicroBit More service.
-     */
-    scanBLE() {
-        const connectorClass = BLE;
-        this._ble = new connectorClass(
-            this.runtime,
-            this._extensionId,
-            {
-                filters: [
-                    {namePrefix: 'Calliope mini'},
-                    {namePrefix: 'BBC micro:bit'},
-                    {services: [MM_SERVICE.ID]}
-                ]
-            },
-            this._onConnect,
-            this.onDisconnect
-        );
-    }
-
-    /**
-     * Start to scan USB serial devices to find micro:bit v2.
-     */
-    scanSerial() {
-        this._ble = new WebSerial(
-            this.runtime,
-            this._extensionId,
-            {
-                filters: [{usbVendorId: 0x0d28, usbProductId: 0x0204}]
-            },
-            this._onConnect,
-            this.onDisconnect
-        );
-    }
-
-    /**
-     * Whether the key is pressed at this moment.
-     * @param {string} key - key in keyboard event
-     * @returns {boolean} - return true when the key is pressed
-     */
-    isKeyPressing(key) {
-        return Object.values(this.keyState).find(state => state.key === key);
-    }
-
-    /**
      * Called by the runtime when user wants to scan for a peripheral.
+     *
+     * In the calliope-edu controller fork there is no scan / no chooser
+     * — the embedding host (e.g. calliope-campus) owns the BLE/USB
+     * connection. We just construct a CalliopeRemote which immediately
+     * reports "connected" and forwards I/O through postMessage. No
+     * Web Bluetooth, no Serial, no environment detection.
      */
     scan() {
         if (this._ble) {
             this._ble.disconnect();
         }
         this.bleBusy = true;
-        if ('serial' in navigator && this.isKeyPressing('Shift')) {
-            this.scanSerial();
-        } else {
-            this.scanBLE();
-        }
-        // The key state is cleared because the keyup event will be dropped by the browser dialog.
-        this.keyState = {};
+        this._ble = new CalliopeRemote(
+            this.runtime,
+            this._extensionId,
+            null,
+            this._onConnect,
+            this.onDisconnect
+        );
     }
 
     /**
