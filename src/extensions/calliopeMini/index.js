@@ -1274,14 +1274,23 @@ class MbitMore {
             this._ble
                 .read(MM_SERVICE.ID, MM_SERVICE.COMMAND_CH, false)
                 .then(result => {
-                    if (!result) {
-                        throw new Error('Config is not readable');
+                    // The host bridge replies with an empty message when no
+                    // device is currently reachable. Use defaults so the
+                    // editor stays usable; once a device is paired later
+                    // the periodic updater picks up real values.
+                    const data = result && result.message
+                        ? base64ToUint8Array(result.message)
+                        : new Uint8Array(0);
+                    if (data.byteLength >= 3) {
+                        const dataView = new DataView(data.buffer, 0);
+                        this.hardware = dataView.getUint8(0);
+                        this.protocol = dataView.getUint8(1);
+                        this.route = dataView.getUint8(2);
+                    } else {
+                        this.hardware = MbitMoreHardwareVersion.MICROBIT_V2;
+                        this.protocol = 2;
+                        this.route = CommunicationRoute.BLE;
                     }
-                    const data = base64ToUint8Array(result.message);
-                    const dataView = new DataView(data.buffer, 0);
-                    this.hardware = dataView.getUint8(0);
-                    this.protocol = dataView.getUint8(1);
-                    this.route = dataView.getUint8(2);
                     this._ble.startNotifications(
                         MM_SERVICE.ID,
                         MM_SERVICE.ACTION_EVENT_CH,
@@ -2344,7 +2353,7 @@ class MbitMoreBlocks {
             extensionURL: MbitMoreBlocks.extensionURL,
             blockIconURI: blockIcon,
             menuIconURI: menuIcon,
-            showStatusButton: true,
+            showStatusButton: false,
             color1: '#75c6c8',
             color2: '#5d9ea0',
             blocks: [
