@@ -31,7 +31,7 @@
  * (or the short numeric form the extension already uses).
  */
 
-const SOURCE = 'calliope-scratch-vm';
+const SOURCE = 'calliope-blocks-vm';
 
 const isFramed = () =>
     typeof window !== 'undefined' && window.parent && window.parent !== window;
