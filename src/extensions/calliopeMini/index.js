@@ -369,19 +369,18 @@ const BLETimeout = 4500;
  */
 const BLEDataStoppedError = 'Calliope mini extension stopped receiving data';
 
+// Consolidated 5-characteristic protocol (matches the unified DAL+CODAL
+// runtime). COMMAND/STATE/MOTION are wire-identical; SENSOR_EVENT (0x0110)
+// carries pin events, button/gesture (action) events and data messages,
+// demuxed by the data[19] format tag; ANALOG_IN (0x0120) packs all four
+// analog pins (P0..P3) as uint16 LE at offsets 0/2/4/6 in one read.
 const MM_SERVICE = {
     ID: '0b50f3e4-607f-4151-9091-7d008d6ffc5c',
     COMMAND_CH: '0b500100-607f-4151-9091-7d008d6ffc5c',
     STATE_CH: '0b500101-607f-4151-9091-7d008d6ffc5c',
     MOTION_CH: '0b500102-607f-4151-9091-7d008d6ffc5c',
-    PIN_EVENT_CH: '0b500110-607f-4151-9091-7d008d6ffc5c',
-    ACTION_EVENT_CH: '0b500111-607f-4151-9091-7d008d6ffc5c',
-    ANALOG_IN_CH: [
-        '0b500120-607f-4151-9091-7d008d6ffc5c',
-        '0b500121-607f-4151-9091-7d008d6ffc5c',
-        '0b500122-607f-4151-9091-7d008d6ffc5c'
-    ],
-    MESSAGE_CH: '0b500130-607f-4151-9091-7d008d6ffc5c'
+    SENSOR_EVENT_CH: '0b500110-607f-4151-9091-7d008d6ffc5c',
+    ANALOG_IN_CH: '0b500120-607f-4151-9091-7d008d6ffc5c'
 };
 
 /**
@@ -497,11 +496,10 @@ class MbitMore {
          */
         this.receivedData = {};
 
-        this.analogIn = [0, 1, 2, 16];
-        this.analogValue = [];
-        this.analogIn.forEach(pinIndex => {
-            this.analogValue[pinIndex] = 0;
-        });
+        // Three analog channels P0..P2 (slots 0..2), delivered together in one
+        // ANALOG_IN read. analogValue/analogInLastUpdated are indexed by slot.
+        this.analogIn = [0, 1, 2];
+        this.analogValue = [0, 0, 0];
 
         this.gpio = [0, 1, 2, 3, 8, 9, 12, 13, 14, 15, 16, 17];
         this.gpio.forEach(pinIndex => {
@@ -538,7 +536,7 @@ class MbitMore {
         }
 
         this.analogInUpdateInterval = 100; // milli-seconds
-        this.analogInLastUpdated = [Date.now(), Date.now(), Date.now()];
+        this.analogInLastUpdated = [0, 0, 0];
 
         /**
          * A time interval to wait (in milliseconds) while a block that sends a BLE message is running.
@@ -822,7 +820,7 @@ class MbitMore {
         }, 1000);
         return new Promise(resolve =>
             this._ble
-                .read(MM_SERVICE.ID, MM_SERVICE.ANALOG_IN_CH[pinIndex], false)
+                .read(MM_SERVICE.ID, MM_SERVICE.ANALOG_IN_CH, false)
                 .then(result => {
                     window.clearTimeout(this.bleBusyTimeoutID);
                     this.bleBusy = false;
@@ -830,10 +828,19 @@ class MbitMore {
                     if (!result) {
                         return resolve(this.analogValue[pinIndex]);
                     }
+                    // One read carries every analog pin (P0..P2) as uint16 LE
+                    // at offsets 0/2/4. Cache all three so reads of other pins
+                    // are served locally within the update interval.
                     const data = base64ToUint8Array(result.message);
                     const dataView = new DataView(data.buffer, 0);
-                    this.analogValue[pinIndex] = dataView.getUint16(0, true);
-                    this.analogInLastUpdated[pinIndex] = Date.now();
+                    const now = Date.now();
+                    for (let slot = 0; slot < 3; slot++) {
+                        if (dataView.byteLength >= (slot * 2) + 2) {
+                            this.analogValue[slot] =
+                                dataView.getUint16(slot * 2, true);
+                            this.analogInLastUpdated[slot] = now;
+                        }
+                    }
                     resolve(this.analogValue[pinIndex]);
                 })
         );
@@ -860,6 +867,7 @@ class MbitMore {
                     this.bleBusy = false;
                     if (!result) return resolve(this);
                     const data = base64ToUint8Array(result.message);
+                    if (data.byteLength < 7) return resolve(this);
                     const dataView = new DataView(data.buffer, 0);
                     // Digital Input
                     const gpioData = dataView.getUint32(0, true);
@@ -1014,6 +1022,7 @@ class MbitMore {
                     this.bleBusy = false;
                     if (!result) return resolve(this);
                     const data = base64ToUint8Array(result.message);
+                    if (data.byteLength < 18) return resolve(this);
                     const dataView = new DataView(data.buffer, 0);
                     // Accelerometer
                     this.pitch = Math.round(
@@ -1291,24 +1300,19 @@ class MbitMore {
                         this.protocol = 2;
                         this.route = CommunicationRoute.BLE;
                     }
+                    // One notify subscription for the whole protocol: pin,
+                    // action and data events all arrive on SENSOR_EVENT_CH and
+                    // are demuxed in onNotify() by the data[19] format tag.
                     this._ble.startNotifications(
                         MM_SERVICE.ID,
-                        MM_SERVICE.ACTION_EVENT_CH,
+                        MM_SERVICE.SENSOR_EVENT_CH,
                         this.onNotify
                     );
-                    this._ble.startNotifications(
-                        MM_SERVICE.ID,
-                        MM_SERVICE.PIN_EVENT_CH,
-                        this.onNotify
-                    );
+                    // nRF51 (mini 1/2) polls slower than nRF52 (mini 3); this
+                    // is a throughput tuning, not a protocol difference.
                     if (this.hardware === MbitMoreHardwareVersion.MICROBIT_V1) {
                         this.microbitUpdateInterval = 100; // milliseconds
                     } else {
-                        this._ble.startNotifications(
-                            MM_SERVICE.ID,
-                            MM_SERVICE.MESSAGE_CH,
-                            this.onNotify
-                        );
                         this.microbitUpdateInterval = 50; // milliseconds
                     }
                     if (this.route === CommunicationRoute.SERIAL) {
@@ -1336,6 +1340,10 @@ class MbitMore {
     onNotify(msg) {
         // console.log('onNotify', msg);
         const data = base64ToUint8Array(msg);
+        // Every event frame is a full 20-byte buffer with the format tag in the
+        // last byte. Ignore short/empty frames instead of throwing a DataView
+        // RangeError (which previously stalled the connection handshake).
+        if (data.byteLength < 20) return;
         const dataView = new DataView(data.buffer, 0);
         const dataFormat = dataView.getUint8(19);
         if (dataFormat === MbitMoreDataFormat.ACTION_EVENT) {

@@ -8,16 +8,15 @@ const base64ToUint8Array = base64 => {
 /**
  * Characteristic ID on serial-port.
  */
+// Consolidated 5-characteristic protocol. The unified SENSOR_EVENT channel
+// (0x0110) carries pin/action/data events; ANALOG_IN (0x0120) carries all four
+// analog pins. Demuxing happens in the extension via the data[19] format tag.
 const SERIAL_CH_ID = {
     '0b500100-607f-4151-9091-7d008d6ffc5c': 0x0100,
     '0b500101-607f-4151-9091-7d008d6ffc5c': 0x0101,
     '0b500102-607f-4151-9091-7d008d6ffc5c': 0x0102,
     '0b500110-607f-4151-9091-7d008d6ffc5c': 0x0110,
-    '0b500111-607f-4151-9091-7d008d6ffc5c': 0x0111,
-    '0b500120-607f-4151-9091-7d008d6ffc5c': 0x0120,
-    '0b500121-607f-4151-9091-7d008d6ffc5c': 0x0121,
-    '0b500122-607f-4151-9091-7d008d6ffc5c': 0x0122,
-    '0b500130-607f-4151-9091-7d008d6ffc5c': 0x0130
+    '0b500120-607f-4151-9091-7d008d6ffc5c': 0x0120
 };
 
 /**
