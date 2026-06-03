@@ -1515,7 +1515,13 @@ class MbitMore {
             true
         );
 
-        if (sendPromise) {
+        // `sendCommandSet(..., force=true)` returns the boolean `true` when BLE
+        // is busy (a retry is scheduled via setTimeout) — treat that like a
+        // yield and return undefined, matching this method's documented
+        // `?Promise` contract. Calling `.then()` on the boolean threw
+        // `TypeError: sendPromise.then is not a function` from startHats
+        // whenever a touch hat fired during an in-flight command.
+        if (sendPromise && typeof sendPromise.then === 'function') {
             return sendPromise.then(() => {
                 this.config.pinMode[pinIndex] = MbitMorePinMode.TOUCH;
                 // console.log('pinMode', pinIndex, this.config.pinMode[pinIndex]);
