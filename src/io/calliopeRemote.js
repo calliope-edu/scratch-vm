@@ -67,6 +67,14 @@ class CalliopeRemote {
         this._resetCallback = resetCallback;
 
         this._connected = false;
+        // Whether this editor is the ACTIVE one in the host. The host keeps the
+        // Blocks iframe mounted (hidden) when another editor is shown, but
+        // scratch-vm keeps its ~50ms sensor-poll loop running — which would
+        // hammer the device + flood the bridge in the background. When inactive
+        // we short-circuit read/write so no device I/O leaves the iframe; the
+        // poll loop still ticks but does nothing. Defaults active (the common
+        // case is the iframe being created while it's the visible editor).
+        this._active = true;
         this._pendingReads = new Map(); // reqId → {resolve, reject}
         this._notifySubscribers = new Map(); // `${service}|${char}` → callback
         this._nextReqId = 1;
@@ -77,6 +85,16 @@ class CalliopeRemote {
         if (typeof window !== 'undefined') {
             window.addEventListener('message', this._messageHandler);
         }
+
+        // Lifecycle diagnostic (rare, always-on): confirms CalliopeRemote was
+        // constructed and records its frame context + target origin. If device
+        // I/O is silent, this is the first thing to check — "was the IO class
+        // even created, and is the iframe framed with a parent origin?".
+        // eslint-disable-next-line no-console
+        console.info(
+            `[calliopeRemote] constructed: extensionId=${extensionId} ` +
+            `framed=${isFramed()} parentOrigin=${parentOriginFromSearch()}`
+        );
 
         // Treat ourselves as connected immediately. The host can be told
         // the real device isn't reachable, but from scratch-vm's POV we're
@@ -99,14 +117,45 @@ class CalliopeRemote {
 
     /** Outbound postMessage to parent. */
     _post(message) {
-        if (typeof window === 'undefined' || !isFramed()) return;
+        if (typeof window === 'undefined') return;
+        if (!isFramed()) {
+            // Critical + rare: device I/O cannot reach the host because the
+            // editor isn't running inside a parent frame. Warn loudly rather
+            // than silently dropping every read/write/subscribe.
+            // eslint-disable-next-line no-console
+            console.warn(
+                '[calliopeRemote] _post skipped: not framed ' +
+                `(window.parent===window? ${typeof window !== 'undefined' && window.parent === window}). ` +
+                'No device I/O will reach the host.'
+            );
+            return;
+        }
+        const origin = parentOriginFromSearch();
+        // Per-message trace is opt-in (set window.__CALLIOPE_DEBUG_IO = true)
+        // so a healthy ~50ms read loop doesn't flood the console.
+        if (window.__CALLIOPE_DEBUG_IO) {
+            // eslint-disable-next-line no-console
+            console.debug(`[calliopeRemote] _post ${message.type || '?'} -> ${origin}`);
+        }
         const payload = Object.assign({source: SOURCE}, message);
         try {
-            window.parent.postMessage(payload, parentOriginFromSearch());
+            window.parent.postMessage(payload, origin);
         } catch (e) {
             // eslint-disable-next-line no-console
             console.warn('[calliopeRemote] postMessage failed', e);
         }
+    }
+
+    /**
+     * Report blocks runtime-version status up to the host (campus). The
+     * calliopeMini extension calls this on connect after reading the device's
+     * COMMAND version byte, so the host can show an "outdated firmware" banner
+     * and the connection widget can display the version. Namespaced `blocks.*`
+     * (not `calliope.*`) so it routes to the host's blocks-message handler.
+     * @param {{runtimeVersion: number, expectedVersion: number, outdated: boolean}} status
+     */
+    reportStatus(status) {
+        this._post(Object.assign({type: 'blocks.runtimeVersion'}, status));
     }
 
     /** Inbound messages from parent. */
@@ -136,6 +185,13 @@ class CalliopeRemote {
                     console.warn('[calliopeRemote] notify callback threw', e);
                 }
             }
+            return;
+        }
+        if (data.type === 'calliope.setActive') {
+            // Host tells us whether the Blocks editor is the visible/active one.
+            // When inactive, read()/write() below become no-ops so the hidden
+            // iframe stops polling the device in the background.
+            this._active = data.active !== false;
             return;
         }
         if (data.type === 'calliope.disconnect') {
@@ -176,6 +232,11 @@ class CalliopeRemote {
         if (optStartNotifications) {
             this.startNotifications(serviceId, characteristicId, onCharacteristicChanged);
         }
+        // Paused (editor not visible): resolve empty immediately, no postMessage
+        // to the host → no background device reads while another editor is open.
+        if (!this._active) {
+            return Promise.resolve({message: '', encoding: 'base64'});
+        }
         const reqId = this._nextReqId++;
         const p = new Promise((resolve, reject) => {
             this._pendingReads.set(reqId, {resolve, reject});
@@ -204,6 +265,11 @@ class CalliopeRemote {
      * @param {boolean} [withResponse]
      */
     write(serviceId, characteristicId, message, encoding = null, withResponse = null) {
+        // Paused (editor not visible): drop writes so a backgrounded Blocks
+        // project can't keep driving the device while another editor is open.
+        if (!this._active) {
+            return Promise.resolve();
+        }
         this._post({
             type: 'calliope.write',
             serviceId,

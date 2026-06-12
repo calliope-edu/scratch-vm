@@ -401,6 +401,29 @@ const AxisSymbol = {
  */
 const G = 1024;
 
+/**
+ * Blocks wire-protocol version the firmware reports in COMMAND data[1]
+ * (firmware BlocksProtocol::BLOCKS_V2 = 2). On connect the editor logs a
+ * visible warning if the connected device reports a different version, so a
+ * future firmware/editor skew surfaces instead of failing silently. The 5-char
+ * consolidation kept this at 2 (COMMAND/STATE/MOTION are wire-identical); bump
+ * BOTH this and the firmware enum in lockstep whenever the wire layout changes.
+ * @type {number}
+ */
+const EXPECTED_PROTOCOL = 2;
+
+/**
+ * Monotonic blocks-runtime version this editor build was made for. Mirrors the
+ * firmware `BLOCKS_RUNTIME_VERSION` #define and `blocks-version.json` beside the
+ * bundled hex. On connect the editor reads the device's version from COMMAND
+ * data[3]; if the device reports a LOWER value (or 0 from an old hex with no
+ * version byte) the host is asked to offer a re-flash. A HIGHER value (a dev
+ * device ahead of the deployed editor) is tolerated — warn, never downgrade.
+ * Bump in lockstep with the firmware + blocks-version.json on every hex release.
+ * @type {number}
+ */
+const EXPECTED_RUNTIME_VERSION = 1;
+
 const pinConfigTimestamps = {};
 
 /**
@@ -444,6 +467,31 @@ class MbitMore {
          * The id of the extension this peripheral belongs to.
          */
         this._extensionId = extensionId;
+
+        /**
+         * Editor's expected blocks-runtime versions {codal, dal}, read from the
+         * manifest bundled beside the hex (static/microbit/blocks-version.json).
+         * This makes the "expected" version exactly the version of the hex THIS
+         * editor would flash, so it cannot drift from the hex. Best-effort +
+         * cached; `_onConnect` falls back to the EXPECTED_RUNTIME_VERSION
+         * constant until/unless this resolves.
+         * @type {?{codal: number, dal: number}}
+         * @private
+         */
+        this._editorRuntimeVersions = null;
+        if (typeof fetch === 'function') {
+            fetch('/static/microbit/blocks-version.json', {cache: 'no-store'})
+                .then(res => (res && res.ok ? res.json() : null))
+                .then(json => {
+                    if (json && typeof json === 'object') {
+                        this._editorRuntimeVersions = {
+                            codal: typeof json.codal === 'number' ? json.codal : EXPECTED_RUNTIME_VERSION,
+                            dal: typeof json.dal === 'number' ? json.dal : EXPECTED_RUNTIME_VERSION
+                        };
+                    }
+                })
+                .catch(() => { /* keep null → constant fallback */ });
+        }
 
         this.digitalLevel = {};
         this.lightLevel = 0;
@@ -584,6 +632,15 @@ class MbitMore {
             this.updater = setTimeout(() => this.startUpdater(), 0);
             return;
         }
+        // Periodically re-read the COMMAND version (~every 2s) so a program
+        // change under us — the user re-flashed this hex, or flashed a different
+        // editor's program and came back — refreshes the outdated banner without
+        // a full reconnect. Reports only on change; empty reads are ignored.
+        this._versionRecheckTick = (this._versionRecheckTick || 0) + 1;
+        if (this._versionRecheckTick >= 40) {
+            this._versionRecheckTick = 0;
+            this._recheckVersion();
+        }
         this.updateState()
             .then(() => this.updateMotion())
             .finally(() => {
@@ -592,6 +649,42 @@ class MbitMore {
                     this.microbitUpdateInterval
                 );
             });
+    }
+
+    /**
+     * Re-read the COMMAND version characteristic and re-report to the host if it
+     * changed, so a flash-while-connected (new hex version, or a switch to a
+     * non-blocks program) refreshes the editor's outdated banner + the widget
+     * version without a full reconnect. Empty/short reads (device settling, or
+     * device I/O gated because this editor is inactive) are ignored so they
+     * never falsely report version 0. ES5 .then chain (no async/await).
+     */
+    _recheckVersion () {
+        if (!this._ble || typeof this._ble.read !== 'function') return;
+        this._ble.read(MM_SERVICE.ID, MM_SERVICE.COMMAND_CH, false).then(result => {
+            const data = result && result.message
+                ? base64ToUint8Array(result.message)
+                : new Uint8Array(0);
+            if (data.byteLength < 4) return; // empty/short → keep current value
+            const view = new DataView(data.buffer, 0);
+            const ver = view.getUint8(3);
+            if (ver === this.runtimeVersion) return; // unchanged → nothing to do
+            this.runtimeVersion = ver;
+            this.hardware = view.getUint8(0);
+            let expected = EXPECTED_RUNTIME_VERSION;
+            if (this._editorRuntimeVersions) {
+                expected = this.hardware === MbitMoreHardwareVersion.MICROBIT_V1
+                    ? this._editorRuntimeVersions.dal
+                    : this._editorRuntimeVersions.codal;
+            }
+            if (this._ble && typeof this._ble.reportStatus === 'function') {
+                this._ble.reportStatus({
+                    runtimeVersion: ver,
+                    expectedVersion: expected,
+                    outdated: ver < expected
+                });
+            }
+        }).catch(() => { /* transient read failure — retried next tick */ });
     }
 
     /**
@@ -1133,6 +1226,8 @@ class MbitMore {
      * Web Bluetooth, no Serial, no environment detection.
      */
     scan() {
+        // eslint-disable-next-line no-console
+        console.info('[calliopeMini] scan(): constructing CalliopeRemote (controller mode, postMessage IO)');
         if (this._ble) {
             this._ble.disconnect();
         }
@@ -1295,10 +1390,64 @@ class MbitMore {
                         this.hardware = dataView.getUint8(0);
                         this.protocol = dataView.getUint8(1);
                         this.route = dataView.getUint8(2);
+                        // data[3] = device blocks-runtime version. An old hex
+                        // with no version byte (<4 bytes) reads as 0 = outdated.
+                        this.runtimeVersion = data.byteLength >= 4 ? dataView.getUint8(3) : 0;
                     } else {
                         this.hardware = MbitMoreHardwareVersion.MICROBIT_V2;
                         this.protocol = 2;
                         this.route = CommunicationRoute.BLE;
+                        this.runtimeVersion = 0;
+                    }
+                    // Visible, NON-FATAL protocol guard: surface a firmware/
+                    // editor wire-version skew instead of silently mis-parsing.
+                    // Never return early here — we still subscribe + start the
+                    // updater so a close-enough device keeps working (graceful
+                    // degradation), and the warning tells the user what to fix.
+                    if (this.protocol !== EXPECTED_PROTOCOL) {
+                        // eslint-disable-next-line no-console
+                        console.warn(
+                            `[calliopeMini] protocol skew: device reports v${this.protocol}, ` +
+                            `editor expects v${EXPECTED_PROTOCOL}. Continuing with the editor's ` +
+                            'layout — update the firmware/editor if blocks misbehave.'
+                        );
+                    }
+                    // eslint-disable-next-line no-console
+                    console.info(
+                        `[calliopeMini] connected: hw=${this.hardware} ` +
+                        `protocol=${this.protocol} route=${this.route} ` +
+                        `runtime=v${this.runtimeVersion}`
+                    );
+                    // Runtime-version handshake: tell the host whether the
+                    // device's hex is OLDER than the one this editor ships, so
+                    // campus can offer a re-flash. A newer device (dev hex ahead
+                    // of the deployed editor) is tolerated — warn, never offer a
+                    // downgrade. If this message never arrives (e.g. no device),
+                    // the host shows nothing — absence is "unknown", not "ok".
+                    // Expected version = the version of the hex THIS editor
+                    // would flash, from the bundled manifest (codal/dal by
+                    // hardware); EXPECTED_RUNTIME_VERSION is the fallback if the
+                    // manifest hasn't loaded yet.
+                    var expectedRuntime = EXPECTED_RUNTIME_VERSION;
+                    if (this._editorRuntimeVersions) {
+                        expectedRuntime = this.hardware === MbitMoreHardwareVersion.MICROBIT_V1
+                            ? this._editorRuntimeVersions.dal
+                            : this._editorRuntimeVersions.codal;
+                    }
+                    var runtimeOutdated = this.runtimeVersion < expectedRuntime;
+                    if (this.runtimeVersion > expectedRuntime) {
+                        // eslint-disable-next-line no-console
+                        console.warn(
+                            `[calliopeMini] runtime newer than editor: device v${this.runtimeVersion}, ` +
+                            `editor built for v${expectedRuntime}. Not offering a downgrade.`
+                        );
+                    }
+                    if (this._ble && typeof this._ble.reportStatus === 'function') {
+                        this._ble.reportStatus({
+                            runtimeVersion: this.runtimeVersion,
+                            expectedVersion: expectedRuntime,
+                            outdated: runtimeOutdated
+                        });
                     }
                     // One notify subscription for the whole protocol: pin,
                     // action and data events all arrive on SENSOR_EVENT_CH and
@@ -1346,6 +1495,18 @@ class MbitMore {
         if (data.byteLength < 20) return;
         const dataView = new DataView(data.buffer, 0);
         const dataFormat = dataView.getUint8(19);
+        // Forward-compatible: a frame whose data[19] tag the editor doesn't
+        // recognise is logged (opt-in) but NOT dropped here — the dispatch
+        // below simply won't match it. Returning early on an unknown tag would
+        // silently swallow valid frames from newer firmware, so we never do.
+        if (typeof window !== 'undefined' && window.__CALLIOPE_DEBUG_IO &&
+            dataFormat !== MbitMoreDataFormat.PIN_EVENT &&
+            dataFormat !== MbitMoreDataFormat.ACTION_EVENT &&
+            dataFormat !== MbitMoreDataFormat.DATA_NUMBER &&
+            dataFormat !== MbitMoreDataFormat.DATA_TEXT) {
+            // eslint-disable-next-line no-console
+            console.warn(`[calliopeMini] onNotify: unhandled format tag 0x${dataFormat.toString(16)}`);
+        }
         if (dataFormat === MbitMoreDataFormat.ACTION_EVENT) {
             const actionEventType = dataView.getUint8(0);
             if (actionEventType === MbitMoreActionEvent.BUTTON) {
