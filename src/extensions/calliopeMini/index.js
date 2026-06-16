@@ -665,9 +665,12 @@ class MbitMore {
             const data = result && result.message
                 ? base64ToUint8Array(result.message)
                 : new Uint8Array(0);
-            if (data.byteLength < 4) return; // empty/short → keep current value
+            // < 3 bytes = empty/timeout (non-Blocks or settling) → keep current
+            // value. A valid read with no version byte (byteLength 3, e.g. the
+            // current DAL hex) is a real device reporting version 0.
+            if (data.byteLength < 3) return;
             const view = new DataView(data.buffer, 0);
-            const ver = view.getUint8(3);
+            const ver = data.byteLength >= 4 ? view.getUint8(3) : 0;
             if (ver === this.runtimeVersion) return; // unchanged → nothing to do
             this.runtimeVersion = ver;
             this.hardware = view.getUint8(0);
@@ -1385,6 +1388,15 @@ class MbitMore {
                     const data = result && result.message
                         ? base64ToUint8Array(result.message)
                         : new Uint8Array(0);
+                    // A real device read carries at least [hardware, protocol,
+                    // route]. An empty/short read means no device is reachable
+                    // yet, the device is still settling, or it isn't running
+                    // Blocks at all (a non-Blocks program times out on this
+                    // read). In that case we must NOT assert a version/outdated
+                    // state below — doing so is what produced the bogus
+                    // "v0, please flash v1" banner. The periodic _recheckVersion
+                    // reports the real version once a valid read arrives.
+                    const haveDeviceData = data.byteLength >= 3;
                     if (data.byteLength >= 3) {
                         const dataView = new DataView(data.buffer, 0);
                         this.hardware = dataView.getUint8(0);
@@ -1397,7 +1409,11 @@ class MbitMore {
                         this.hardware = MbitMoreHardwareVersion.MICROBIT_V2;
                         this.protocol = 2;
                         this.route = CommunicationRoute.BLE;
-                        this.runtimeVersion = 0;
+                        // Unknown — leave it unset (not 0) so _recheckVersion
+                        // reports the first real value it sees, and so we never
+                        // claim "version 0 / outdated" for a device we couldn't
+                        // actually read.
+                        this.runtimeVersion = undefined;
                     }
                     // Visible, NON-FATAL protocol guard: surface a firmware/
                     // editor wire-version skew instead of silently mis-parsing.
@@ -1442,7 +1458,10 @@ class MbitMore {
                             `editor built for v${expectedRuntime}. Not offering a downgrade.`
                         );
                     }
-                    if (this._ble && typeof this._ble.reportStatus === 'function') {
+                    // Only report a version/outdated state when we actually read
+                    // the device. On an empty/short read the host keeps showing
+                    // "detecting" (absence = unknown) instead of a false banner.
+                    if (haveDeviceData && this._ble && typeof this._ble.reportStatus === 'function') {
                         this._ble.reportStatus({
                             runtimeVersion: this.runtimeVersion,
                             expectedVersion: expectedRuntime,
