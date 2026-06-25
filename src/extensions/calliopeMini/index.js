@@ -435,7 +435,7 @@ const pinConfigTimestamps = {};
  * per-pad guard so editor + device agree.
  * @type {number}
  */
-const TOUCH_SETTLE_MS = 1500;
+const TOUCH_SETTLE_MS = 3000;
 
 /**
  * create menu for pin
