@@ -427,6 +427,17 @@ const EXPECTED_RUNTIME_VERSION = 1;
 const pinConfigTimestamps = {};
 
 /**
+ * After a touch pad is armed the codal TouchButton calibrates and can surface a
+ * phantom touch (~0.5-2s) with no finger. For this many ms after arming we treat
+ * any event on that pad as initialization, not real input: the hat does not fire
+ * (no action stack, no block glow) and the pad's baseline is pinned so the
+ * phantom isn't replayed as an edge once the window lifts. Matches the firmware
+ * per-pad guard so editor + device agree.
+ * @type {number}
+ */
+const TOUCH_SETTLE_MS = 1500;
+
+/**
  * create menu for pin
  * @param {number} pinIndex
  * @returns menu object
@@ -524,6 +535,14 @@ class MbitMore {
         });
 
         /**
+         * Wall-clock time each touch pad (by pin index) was last armed, used to
+         * suppress post-arm calibration phantoms. See TOUCH_SETTLE_MS.
+         * @type {Object.<number, number>}
+         * @private
+         */
+        this.touchArmedAt = {};
+
+        /**
          * The most recently received gesture events.
          * @type {Object <number, number>} - Store of gesture ID and timestamp.
          * @private
@@ -544,10 +563,10 @@ class MbitMore {
          */
         this.receivedData = {};
 
-        // Three analog channels P0..P2 (slots 0..2), delivered together in one
+        // Four analog channels P0..P3 (slots 0..3), delivered together in one
         // ANALOG_IN read. analogValue/analogInLastUpdated are indexed by slot.
-        this.analogIn = [0, 1, 2];
-        this.analogValue = [0, 0, 0];
+        this.analogIn = [0, 1, 2, 3];
+        this.analogValue = [0, 0, 0, 0];
 
         this.gpio = [0, 1, 2, 3, 8, 9, 12, 13, 14, 15, 16, 17];
         this.gpio.forEach(pinIndex => {
@@ -584,7 +603,7 @@ class MbitMore {
         }
 
         this.analogInUpdateInterval = 100; // milli-seconds
-        this.analogInLastUpdated = [0, 0, 0];
+        this.analogInLastUpdated = [0, 0, 0, 0];
 
         /**
          * A time interval to wait (in milliseconds) while a block that sends a BLE message is running.
@@ -619,6 +638,29 @@ class MbitMore {
         this.config.mic = false;
         this.config.pinMode = {};
         this.config.isResistiveTouch = false
+    }
+
+    /**
+     * Clear all device-side editor state so a program (re)load, device reset, or
+     * disconnect can't leak a previous program/session's events or touch arming
+     * into the next program. buttonEvents is re-initialised PER NAME because
+     * onNotify assigns buttonEvents[name][event] assuming the per-name object
+     * exists. Pairs with MbitMoreBlocks.resetSessionState (which re-seeds the
+     * hat edge baselines).
+     */
+    resetDeviceState() {
+        this.buttonEvents = {};
+        Object.keys(MbitMoreButtonStateIndex).forEach(name => {
+            this.buttonEvents[name] = {};
+        });
+        this.gestureEvents = {};
+        this._pinEvents = {};
+        this.receivedData = {};
+        this.touchArmedAt = {};
+        this.initConfig();
+        Object.keys(pinConfigTimestamps).forEach(pin => {
+            delete pinConfigTimestamps[pin];
+        });
     }
 
     /**
@@ -670,6 +712,27 @@ class MbitMore {
             // current DAL hex) is a real device reporting version 0.
             if (data.byteLength < 3) return;
             const view = new DataView(data.buffer, 0);
+            // Touch-arm reconciliation (declarative sync). The device reports its
+            // live touch-armed pins in data[4] (bit n = Pn). If we believe a pin
+            // is armed (pinMode==TOUCH) but the device says it is NOT, the device
+            // was reset (connect/disconnect/program-switch) — clear our cache so
+            // the active whenTouchEvent hat re-sends CONFIG TOUCH and re-arms it.
+            // Only clears pinMode; never touches buttonEvents. < 5 bytes = an old
+            // hex without the bitmask → skip reconciliation (assume armed).
+            if (data.byteLength >= 5) {
+                const armedMask = view.getUint8(4);
+                for (let pin = 0; pin <= 3; pin++) {
+                    if (this.config.pinMode[pin] === MbitMorePinMode.TOUCH &&
+                        !(armedMask & (1 << pin))) {
+                        this.config.pinMode[pin] = undefined;
+                        // Also drop the rate-limit stamp so the active touch hat
+                        // re-arms immediately; otherwise configTouchPin's 1s
+                        // throttle blocks the re-send and the pin stays unarmed
+                        // (the "P0 not armed after reset/reconnect" bug).
+                        delete pinConfigTimestamps[pin];
+                    }
+                }
+            }
             const ver = data.byteLength >= 4 ? view.getUint8(3) : 0;
             if (ver === this.runtimeVersion) return; // unchanged → nothing to do
             this.runtimeVersion = ver;
@@ -924,13 +987,13 @@ class MbitMore {
                     if (!result) {
                         return resolve(this.analogValue[pinIndex]);
                     }
-                    // One read carries every analog pin (P0..P2) as uint16 LE
-                    // at offsets 0/2/4. Cache all three so reads of other pins
+                    // One read carries every analog pin (P0..P3) as uint16 LE
+                    // at offsets 0/2/4/6. Cache all four so reads of other pins
                     // are served locally within the update interval.
                     const data = base64ToUint8Array(result.message);
                     const dataView = new DataView(data.buffer, 0);
                     const now = Date.now();
-                    for (let slot = 0; slot < 3; slot++) {
+                    for (let slot = 0; slot < 4; slot++) {
                         if (dataView.byteLength >= (slot * 2) + 2) {
                             this.analogValue[slot] =
                                 dataView.getUint16(slot * 2, true);
@@ -1273,6 +1336,9 @@ class MbitMore {
             window.clearTimeout(this._timeoutID);
             this._timeoutID = null;
         }
+        // Clear device-side state so a disconnect can't leave a previous
+        // session's touch arming / events around for the next connection.
+        this.resetDeviceState();
     }
 
     /**
@@ -1682,6 +1748,12 @@ class MbitMore {
             return Promise.resolve();
         }
 
+        // Stamp the 1s rate-limit BEFORE sending (unconditionally) so a BLE-busy
+        // path can't retry every frame — that caused an ~50ms CONFIG TOUCH storm
+        // that congested BLE, kept it busy (so the pin never armed), made the
+        // reconcile re-clear pinMode, and spammed harder (positive feedback).
+        // Prompt re-arm after a reset is handled by the reconcile clearing this
+        // stamp (see _recheckVersion), not by skipping it here.
         pinConfigTimestamps[pinIndex] = Date.now();
 
         const sendPromise = this.sendCommandSet(
@@ -1704,7 +1776,10 @@ class MbitMore {
         if (sendPromise && typeof sendPromise.then === 'function') {
             return sendPromise.then(() => {
                 this.config.pinMode[pinIndex] = MbitMorePinMode.TOUCH;
-                // console.log('pinMode', pinIndex, this.config.pinMode[pinIndex]);
+                // Start the post-arm settle window (see TOUCH_SETTLE_MS): the
+                // pad has just (re)armed, so suppress calibration phantoms until
+                // it has stabilised.
+                this.touchArmedAt[pinIndex] = Date.now();
             });
         }
         return;
@@ -2534,6 +2609,48 @@ class MbitMoreBlocks {
          * @type {Object.<number, Object>} pin index to object with event and timestamp.
          */
         this.prevReceivedData = {};
+
+        // Reset all editor-side session state on every program (re)load and on
+        // green-flag start, BEFORE the first hat frame — so hats never fire on a
+        // previous program/session's stale events (no block glow, no stack run,
+        // no event writes beyond on-demand init commands), and two programs'
+        // touch/pin state never mix. PROJECT_LOADED fires on vm.loadProject
+        // (program switch); PROJECT_START fires on the green flag.
+        this.resetSessionState = this.resetSessionState.bind(this);
+        if (this.runtime) {
+            this.runtime.on('PROJECT_LOADED', this.resetSessionState);
+            this.runtime.on('PROJECT_START', this.resetSessionState);
+        }
+    }
+
+    /**
+     * Reset all editor-side session state to a clean baseline for the current
+     * program: clear the device-side event/config stores (via the peripheral),
+     * re-seed the hat edge baselines to match (so nothing reads as a new edge on
+     * the first frame), and cancel pending deferred baseline updates so a stale
+     * snapshot can't re-seed a frame later. Runs on program (re)load and on
+     * green-flag start. With the stores cleared, every when* hat returns false
+     * via its `lastTimestamp === null` guard on load (silent init); the first
+     * GENUINE device event after load still fires normally.
+     */
+    resetSessionState() {
+        const peripheral = this._peripheral;
+        if (!peripheral || typeof peripheral.resetDeviceState !== 'function') return;
+        peripheral.resetDeviceState();
+        this.updatePrevButtonEvents();
+        this.updatePrevGestureEvents();
+        this.updatePrevPinEvents();
+        this.updatePrevReceivedData();
+        ['updateLastButtonEventTimer',
+            'updateLastGestureEventTimer',
+            'updateLastPinEventTimer',
+            'updateLastDataTimer'
+        ].forEach(timer => {
+            if (this[timer]) {
+                clearTimeout(this[timer]);
+                this[timer] = null;
+            }
+        });
     }
 
     /**
@@ -3242,7 +3359,14 @@ class MbitMoreBlocks {
         );
 
         if (lastTimestamp === null) return false;
-        if (!this.prevButtonEvents[buttonName]) return true;
+        // First time we see this button (no baseline yet): treat the current
+        // timestamp as the baseline and DON'T fire. Returning true here made the
+        // hat fire on STALE events left in buttonEvents from a previous
+        // session/program — the "event blocks light up with no device / on
+        // program switch" bug. updatePrevButtonEvents (scheduled above) seeds the
+        // baseline one step later, after which only a genuinely NEW timestamp
+        // fires the edge.
+        if (!this.prevButtonEvents[buttonName]) return false;
         return lastTimestamp !== this.prevButtonEvents[buttonName][eventName];
     }
 
@@ -3272,15 +3396,27 @@ class MbitMoreBlocks {
         if (buttonName === MbitMoreButtonName.LOGO) {
             return this.whenButtonEvent(args);
         }
-        if (
-            this._peripheral.isPinTouchMode(MbitMoreButtonPinIndex[buttonName])
-        ) {
+        const pinIndex = MbitMoreButtonPinIndex[buttonName];
+        if (this._peripheral.isPinTouchMode(pinIndex)) {
+            // Post-arm settle window: a freshly-armed capacitive TouchButton
+            // calibrates and can surface a phantom touch with no finger. Treat
+            // any event in this window as initialization, not real input — pin
+            // this pad's baseline to the latest seen timestamp (so the phantom
+            // is not replayed as an edge once the window lifts) and DON'T fire:
+            // no action stack runs (no display/command writes) and the hat
+            // block does not glow.
+            const armedAt = this._peripheral.touchArmedAt[pinIndex];
+            if (armedAt && (Date.now() - armedAt) < TOUCH_SETTLE_MS) {
+                const events = this._peripheral.buttonEvents[buttonName];
+                if (events) {
+                    this.prevButtonEvents[buttonName] =
+                        Object.assign({}, events);
+                }
+                return false;
+            }
             return this.whenButtonEvent(args);
         }
-        const configPromise = this._peripheral.configTouchPin(
-            MbitMoreButtonPinIndex[buttonName],
-            util
-        );
+        this._peripheral.configTouchPin(pinIndex, util);
         return false;
     }
 
