@@ -543,6 +543,28 @@ class MbitMore {
         this.touchArmedAt = {};
 
         /**
+         * Touch pads (by pin index) the current program WANTS armed — the
+         * durable registration that decouples arming from per-frame hat
+         * execution. The when-touched hat / "touched?" reporter only ADD their
+         * pin here (no device I/O, no glow); the updater-loop worker
+         * `syncTouchArming` sends the actual CONFIG TOUCH and re-arms after a
+         * device reset, so the VM never re-runs the event blocks to keep a pad
+         * armed. Cleared by resetDeviceState on a program (re)load / disconnect
+         * and re-populated as the new program's hats are evaluated.
+         * @type {Set<number>}
+         * @private
+         */
+        this.touchPinsWanted = new Set();
+
+        /**
+         * Last touch-preparing state reported to the host, so _reportTouchStatus-
+         * IfChanged posts only on a transition (arming/calibrating ↔ ready).
+         * @type {boolean}
+         * @private
+         */
+        this._touchPreparingReported = false;
+
+        /**
          * The most recently received gesture events.
          * @type {Object <number, number>} - Store of gesture ID and timestamp.
          * @private
@@ -596,10 +618,16 @@ class MbitMore {
         this.onDisconnect = this.onDisconnect.bind(this);
         this._onConnect = this._onConnect.bind(this);
         this.onNotify = this.onNotify.bind(this);
+        this._forceVersionReport = this._forceVersionReport.bind(this);
 
         this.stopTone = this.stopTone.bind(this);
         if (this.runtime) {
             this.runtime.on('PROJECT_STOP_ALL', this.stopTone);
+            // Host signalled a transport (re)connect or a return to the Blocks
+            // editor: force a fresh runtime-version handshake. The puppet IO never
+            // sees the real device reconnect, so the normal change-gated recheck
+            // would never re-report a version the host cleared on disconnect.
+            this.runtime.on('CALLIOPE_HOST_REHANDSHAKE', this._forceVersionReport);
         }
 
         this.analogInUpdateInterval = 100; // milli-seconds
@@ -657,6 +685,11 @@ class MbitMore {
         this._pinEvents = {};
         this.receivedData = {};
         this.touchArmedAt = {};
+        // Forget the previous program's wanted touch pads; the new program's
+        // hats re-register theirs as they are evaluated, and the worker arms
+        // exactly those. Without this, a switch would keep arming pads the new
+        // program doesn't use.
+        this.touchPinsWanted = new Set();
         this.initConfig();
         Object.keys(pinConfigTimestamps).forEach(pin => {
             delete pinConfigTimestamps[pin];
@@ -674,15 +707,26 @@ class MbitMore {
             this.updater = setTimeout(() => this.startUpdater(), 0);
             return;
         }
-        // Periodically re-read the COMMAND version (~every 2s) so a program
+        // Periodically re-read the COMMAND version (~every 1s) so a program
         // change under us — the user re-flashed this hex, or flashed a different
         // editor's program and came back — refreshes the outdated banner without
-        // a full reconnect. Reports only on change; empty reads are ignored.
+        // a full reconnect. The same read runs the data[4] touch-armed reconcile,
+        // so this cadence also bounds how long touch can stay un-rearmed after a
+        // device reset the VM didn't observe (e.g. a warm reset with no BLE drop
+        // and no program reload). Reports only on change; empty reads are ignored.
+        // Reconnects / editor-returns don't wait for this — they force a recheck
+        // immediately via CALLIOPE_HOST_REHANDSHAKE (_forceVersionReport).
         this._versionRecheckTick = (this._versionRecheckTick || 0) + 1;
-        if (this._versionRecheckTick >= 40) {
+        if (this._versionRecheckTick >= 20) {
             this._versionRecheckTick = 0;
             this._recheckVersion();
         }
+        // Worker: keep the program's registered touch pads armed — and re-arm the
+        // ones the data[4] reconcile just found disarmed (device reset/reconnect)
+        // — without the event blocks re-running. Idempotent + rate-limited, so
+        // it's a no-op once every wanted pad is armed.
+        this.syncTouchArming();
+        this._reportTouchStatusIfChanged();
         this.updateState()
             .then(() => this.updateMotion())
             .finally(() => {
@@ -716,7 +760,8 @@ class MbitMore {
             // live touch-armed pins in data[4] (bit n = Pn). If we believe a pin
             // is armed (pinMode==TOUCH) but the device says it is NOT, the device
             // was reset (connect/disconnect/program-switch) — clear our cache so
-            // the active whenTouchEvent hat re-sends CONFIG TOUCH and re-arms it.
+            // the syncTouchArming worker re-sends CONFIG TOUCH on the next updater
+            // tick and re-arms it (the pin stays in touchPinsWanted across resets).
             // Only clears pinMode; never touches buttonEvents. < 5 bytes = an old
             // hex without the bitmask → skip reconciliation (assume armed).
             if (data.byteLength >= 5) {
@@ -725,8 +770,8 @@ class MbitMore {
                     if (this.config.pinMode[pin] === MbitMorePinMode.TOUCH &&
                         !(armedMask & (1 << pin))) {
                         this.config.pinMode[pin] = undefined;
-                        // Also drop the rate-limit stamp so the active touch hat
-                        // re-arms immediately; otherwise configTouchPin's 1s
+                        // Also drop the rate-limit stamp so syncTouchArming
+                        // re-arms on the next tick; otherwise configTouchPin's 1s
                         // throttle blocks the re-send and the pin stays unarmed
                         // (the "P0 not armed after reset/reconnect" bug).
                         delete pinConfigTimestamps[pin];
@@ -751,6 +796,20 @@ class MbitMore {
                 });
             }
         }).catch(() => { /* transient read failure — retried next tick */ });
+    }
+
+    /**
+     * Force a fresh runtime-version handshake to the host, even when the cached
+     * version is unchanged. Called when the host signals a transport (re)connect
+     * or a return to the Blocks editor: the puppet IO stays "connected" across the
+     * real device's reconnect, so the change-gated _recheckVersion would never
+     * re-report a version the host cleared on disconnect — leaving the host's
+     * program banner stuck "detecting". Dropping the cached version makes the next
+     * read report it again; the same read also runs the data[4] touch reconcile.
+     */
+    _forceVersionReport () {
+        this.runtimeVersion = undefined;
+        this._recheckVersion();
     }
 
     /**
@@ -1783,6 +1842,69 @@ class MbitMore {
             });
         }
         return;
+    }
+
+    /**
+     * Register a touch pad (by pin index) the current program needs armed,
+     * WITHOUT touching the device. Called by the when-touched hat / "touched?"
+     * reporter in place of arming inline, so evaluating those blocks no longer
+     * drives a BLE write or block glow. The updater-loop worker `syncTouchArming`
+     * performs the actual CONFIG TOUCH and keeps it armed (re-arming after a
+     * device reset), so the VM never re-runs the event blocks to maintain arming.
+     * @param {number} pinIndex - touch-capable pad index (0..3).
+     */
+    registerTouchPin(pinIndex) {
+        if (pinIndex >= 0 && pinIndex <= 3) {
+            this.touchPinsWanted.add(pinIndex);
+        }
+    }
+
+    /**
+     * Worker, run once per updater tick: arm every wanted-but-unarmed touch pad.
+     * configTouchPin is idempotent — it no-ops when the pad is already in TOUCH
+     * mode and rate-limits re-sends — so this is cheap in steady state and self-
+     * heals a BLE-busy arm by retrying next tick. After a device reset the COMMAND
+     * data[4] reconcile clears pinMode for the disarmed pads, so this re-arms them
+     * on the next tick with no hat involvement. Called without a block `util`;
+     * sendCommandSet handles that (it falls back to a setTimeout retry when busy).
+     */
+    syncTouchArming() {
+        if (!this.isConnected() || this.touchPinsWanted.size === 0) return;
+        this.touchPinsWanted.forEach(pinIndex => {
+            if (!this.isPinTouchMode(pinIndex)) {
+                this.configTouchPin(pinIndex);
+            }
+        });
+    }
+
+    /**
+     * Tell the host whether the program's touch pads are still being armed or
+     * calibrated, so campus can show a transient "preparing inputs" banner.
+     * "Preparing" = any wanted pad is not yet in TOUCH mode, OR is armed but
+     * still inside its TOUCH_SETTLE_MS calibration window (touch not responsive
+     * yet). Posts only on a transition. Cheap; runs once per updater tick.
+     */
+    _reportTouchStatusIfChanged() {
+        let preparing = false;
+        if (this.touchPinsWanted.size > 0) {
+            const now = Date.now();
+            this.touchPinsWanted.forEach(pinIndex => {
+                if (!this.isPinTouchMode(pinIndex)) {
+                    preparing = true;
+                    return;
+                }
+                const armedAt = this.touchArmedAt[pinIndex];
+                if (armedAt && (now - armedAt) < TOUCH_SETTLE_MS) {
+                    preparing = true;
+                }
+            });
+        }
+        if (preparing !== this._touchPreparingReported) {
+            this._touchPreparingReported = preparing;
+            if (this._ble && typeof this._ble.reportTouchStatus === 'function') {
+                this._ble.reportTouchStatus({preparing});
+            }
+        }
     }
 
     /**
@@ -3416,7 +3538,11 @@ class MbitMoreBlocks {
             }
             return this.whenButtonEvent(args);
         }
-        this._peripheral.configTouchPin(pinIndex, util);
+        // Not armed yet: register the pad so the updater-loop worker arms it.
+        // Evaluating this hat must NOT drive a BLE write itself — that is the
+        // "hardware does things while a block is merely being polled" noise the
+        // arming-in-the-predicate model caused. Don't fire until it's armed.
+        this._peripheral.registerTouchPin(pinIndex);
         return false;
     }
 
@@ -3438,12 +3564,11 @@ class MbitMoreBlocks {
         ) {
             return this._peripheral.isTouched(buttonName);
         }
-        const configPromise = this._peripheral.configTouchPin(
-            MbitMoreButtonPinIndex[buttonName],
-            util
-        );
-        if (!configPromise) return; // This thread was yielded.
-        return configPromise.then(() => this._peripheral.isTouched(buttonName));
+        // Not armed yet: register the pad for the worker to arm and report
+        // not-touched until it is (a tick later). The reporter itself never
+        // drives a BLE write.
+        this._peripheral.registerTouchPin(MbitMoreButtonPinIndex[buttonName]);
+        return false;
     }
 
     /**

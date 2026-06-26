@@ -158,6 +158,19 @@ class CalliopeRemote {
         this._post(Object.assign({type: 'blocks.runtimeVersion'}, status));
     }
 
+    /**
+     * Report touch/pin input arming status up to the host (campus). The
+     * calliopeMini extension calls this when the program's touch pads switch
+     * between "still arming / calibrating" and "ready", so campus can show a
+     * transient "preparing inputs" banner instead of acting as if touch is
+     * already responsive. Namespaced `blocks.*` so it routes to the host's
+     * blocks-message handler.
+     * @param {{preparing: boolean}} status
+     */
+    reportTouchStatus(status) {
+        this._post(Object.assign({type: 'blocks.touchStatus'}, status));
+    }
+
     /** Inbound messages from parent. */
     _onParentMessage(event) {
         if (event.source !== window.parent) return;
@@ -191,7 +204,30 @@ class CalliopeRemote {
             // Host tells us whether the Blocks editor is the visible/active one.
             // When inactive, read()/write() below become no-ops so the hidden
             // iframe stops polling the device in the background.
-            this._active = data.active !== false;
+            const nextActive = data.active !== false;
+            const becameActive = nextActive && !this._active;
+            this._active = nextActive;
+            // Returning to the Blocks editor: the device may have been reset or
+            // changed while we were paused (we weren't polling it). Force a fresh
+            // version handshake + touch reconcile so the host banner and touch
+            // arming re-sync immediately rather than after the periodic poll.
+            if (becameActive) {
+                try {
+                    this._runtime.emit('CALLIOPE_HOST_REHANDSHAKE');
+                } catch (_e) { /* ignore */ }
+            }
+            return;
+        }
+        if (data.type === 'calliope.rehandshake') {
+            // Host (re)connected a transport. The puppet never sees the real
+            // device's reconnect, so force the extension to re-read COMMAND and
+            // re-report the runtime version even if unchanged (otherwise the host
+            // can lose the version on disconnect and never re-learn it, leaving
+            // its program banner stuck "detecting"). The same COMMAND read runs
+            // the data[4] touch-armed reconcile, so touch re-arms promptly too.
+            try {
+                this._runtime.emit('CALLIOPE_HOST_REHANDSHAKE');
+            } catch (_e) { /* ignore */ }
             return;
         }
         if (data.type === 'calliope.disconnect') {
