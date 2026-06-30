@@ -837,7 +837,8 @@ class MbitMore {
                         // pin stays unarmed (the "P0 not armed after reconnect" bug).
                         this.config.pinMode[pin] = undefined;
                         delete pinConfigTimestamps[pin];
-                    } else if (!believedArmed && deviceArmed && this.touchPinsWanted.has(pin)) {
+                    } else if (!believedArmed && deviceArmed &&
+                               this.touchPinsWanted.has(pin) && pinConfigTimestamps[pin]) {
                         // Device IS armed but the VM never recorded it — the INVERSE
                         // desync the disarm branch above can't see. It happens when
                         // syncTouchArming armed the pad through configTouchPin's
@@ -849,8 +850,14 @@ class MbitMore {
                         // isPinTouched — which gate on isPinTouchMode — never fire
                         // for it (the "P0 works, P1 stuck" report). Adopt the
                         // device's truth so the hats start delivering events.
-                        // touchPinsWanted-gated so we never adopt a pad this program
-                        // doesn't use (e.g. one left armed by a previous program).
+                        // Gated on touchPinsWanted (never adopt a pad this program
+                        // doesn't use) AND on pinConfigTimestamps[pin] — i.e. we
+                        // actually attempted to arm this pad. The firmware only
+                        // refreshes data[4] on a command WRITE (not on a bare read
+                        // or resetBlocksState), so a fresh BLE connect can briefly
+                        // return a STALE bitmask from before the reset; requiring a
+                        // prior arm attempt means we only trust the bit once our own
+                        // CONFIG TOUCH has refreshed it.
                         this.config.pinMode[pin] = MbitMorePinMode.TOUCH;
                         this.touchArmedAt[pin] = Date.now();
                     }
@@ -2041,10 +2048,26 @@ class MbitMore {
      */
     forceRearmInputs() {
         if (!this.isConnected()) return;
-        // Touch pads: forget the recorded TOUCH mode, drop the 1s throttle stamp,
-        // and clear the settle timestamp, so syncTouchArming re-sends CONFIG TOUCH
-        // for each wanted pad. KEEP touchPinsWanted — the program still wants them.
+        // Touch pads: force the DEVICE to tear down + recreate each wanted pad.
+        // The firmware arm is idempotent — it SKIPS a pad already in touch mode
+        // (BlocksDevice CMD_CONFIG TOUCH guard), so a plain re-send would NOT
+        // recreate a codal TouchButton that went bad (e.g. a digital read on a
+        // BLE reconnect can disconnect it, leaving touch dead while touchMode is
+        // still set). So first send CONFIG TOUCH *disable* ([pin, 0]) to clear
+        // the device's touchMode, then drop our belief + throttle so the next
+        // syncTouchArming sends an enable the firmware acts on as an off->on
+        // transition. This is the input-scoped equivalent of the device RESET a
+        // program switch performs — which is why "load another program" recovers
+        // a stuck pad when a plain re-arm does not.
         this.touchPinsWanted.forEach(pinIndex => {
+            this.sendCommandSet(
+                [{
+                    id: (BLECommand.CMD_CONFIG << 5) | MbitMoreConfig.TOUCH,
+                    message: new Uint8Array([pinIndex, 0])
+                }],
+                undefined,
+                true
+            );
             this.config.pinMode[pinIndex] = undefined;
             delete pinConfigTimestamps[pinIndex];
             delete this.touchArmedAt[pinIndex];
