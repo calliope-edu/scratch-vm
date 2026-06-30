@@ -63,7 +63,8 @@ const MbitMoreHardwareVersion = {
  */
 const CommunicationRoute = {
     BLE: 0,
-    SERIAL: 1
+    SERIAL: 1,
+    DAP: 2
 };
 
 /**
@@ -438,6 +439,16 @@ const pinConfigTimestamps = {};
 const TOUCH_SETTLE_MS = 3000;
 
 /**
+ * Grace window after (re)sending a pin-event SET_EVENT before the COMMAND
+ * data[5..7] reconcile is allowed to treat the pin as "dropped" and re-arm it.
+ * Covers the command's round-trip so an in-flight arm during a multi-pin burst
+ * (e.g. arming 3 pins then adding 2 more) is not falsely re-sent before the
+ * device has processed + reported it. See _recheckVersion + syncPinEventArming.
+ * @type {number}
+ */
+const PIN_EVENT_REARM_GRACE_MS = 500;
+
+/**
  * create menu for pin
  * @param {number} pinIndex
  * @returns menu object
@@ -555,6 +566,38 @@ class MbitMore {
          * @private
          */
         this.touchPinsWanted = new Set();
+
+        /**
+         * Pin-event arming the current program WANTS, by pin index → event type
+         * (MbitMorePinEventType). The durable intent for CMD_PIN SET_EVENT, the
+         * event-pin analogue of touchPinsWanted. Unlike touch (re-registered every
+         * frame by its hat), pin events are armed ONCE by a command block, so this
+         * must survive a device reconnect — syncPinEventArming re-sends a dropped
+         * SET_EVENT, and the COMMAND data[5..7] reconcile detects device resets.
+         * Cleared only on program (re)load / green-flag (resetPinEventIntent), not
+         * on disconnect.
+         * @type {Map<number, number>}
+         * @private
+         */
+        this.pinEventsWanted = new Map();
+
+        /**
+         * What we believe is currently armed on the device, by pin index → event
+         * type. Set on a successful SET_EVENT; cleared on disconnect and when the
+         * data[5..7] reconcile finds the device disarmed a pin we believed armed
+         * (→ syncPinEventArming re-arms it).
+         * @type {Map<number, number>}
+         * @private
+         */
+        this.pinEventArmed = new Map();
+
+        /**
+         * Wall-clock ms each pin-event SET_EVENT was last sent, rate-limiting the
+         * worker's re-sends and gating the reconcile's grace window.
+         * @type {Object.<number, number>}
+         * @private
+         */
+        this.pinEventConfigTimestamps = {};
 
         /**
          * Last touch-preparing state reported to the host, so _reportTouchStatus-
@@ -690,6 +733,15 @@ class MbitMore {
         // exactly those. Without this, a switch would keep arming pads the new
         // program doesn't use.
         this.touchPinsWanted = new Set();
+        // Pin events: forget what we believe is armed on the device (it was
+        // reset/disconnected) + drop rate-limit stamps so syncPinEventArming
+        // re-sends SET_EVENT for every still-wanted pin. KEEP pinEventsWanted —
+        // unlike touch (re-registered every frame by its hat), pin-event arming
+        // is sent once by a command block that won't re-run on reconnect, so the
+        // want must survive a disconnect. resetPinEventIntent (program reload)
+        // forgets the wants.
+        this.pinEventArmed = new Map();
+        this.pinEventConfigTimestamps = {};
         this.initConfig();
         Object.keys(pinConfigTimestamps).forEach(pin => {
             delete pinConfigTimestamps[pin];
@@ -726,6 +778,7 @@ class MbitMore {
         // — without the event blocks re-running. Idempotent + rate-limited, so
         // it's a no-op once every wanted pad is armed.
         this.syncTouchArming();
+        this.syncPinEventArming();
         this._reportTouchStatusIfChanged();
         this.updateState()
             .then(() => this.updateMotion())
@@ -777,6 +830,31 @@ class MbitMore {
                         delete pinConfigTimestamps[pin];
                     }
                 }
+            }
+            // Pin-event reconciliation (same idea as touch above). data[5..7] is a
+            // 24-bit bitmap of pins armed for edge/pulse events. If we believe a
+            // pin is armed but the device says it is NOT — and the last (re)arm
+            // had time to land (grace window) — the SET_EVENT was dropped or the
+            // device reset, so clear our belief + stamp and syncPinEventArming
+            // re-sends next tick (the pin stays in pinEventsWanted). The grace
+            // window prevents a false re-arm of an in-flight arm mid-burst (the
+            // "arm 3, add 2" case). < 8 bytes = an old hex without the bitmap.
+            if (data.byteLength >= 8) {
+                const eventMask =
+                    view.getUint8(5) | (view.getUint8(6) << 8) | (view.getUint8(7) << 16);
+                const dropped = [];
+                this.pinEventArmed.forEach((type, pin) => {
+                    if (eventMask & (1 << pin)) return; // device confirms armed
+                    const ts = this.pinEventConfigTimestamps[pin];
+                    if (ts && Date.now() - ts < PIN_EVENT_REARM_GRACE_MS) return; // in-flight
+                    dropped.push(pin);
+                });
+                // Mutate AFTER iterating (never delete mid-forEach). Clearing the
+                // belief + stamp makes syncPinEventArming re-send next tick.
+                dropped.forEach(pin => {
+                    this.pinEventArmed.delete(pin);
+                    delete this.pinEventConfigTimestamps[pin];
+                });
             }
             const ver = data.byteLength >= 4 ? view.getUint8(3) : 0;
             if (ver === this.runtimeVersion) return; // unchanged → nothing to do
@@ -843,7 +921,9 @@ class MbitMore {
                     ])
                 }
             ],
-            util
+            util,
+            false, // not force
+            true // important: deliver reliably
         );
     }
 
@@ -873,7 +953,9 @@ class MbitMore {
                 message: new Uint8Array([...matrix[3], ...matrix[4]])
             }
         ];
-        return this.sendCommandSet(cmdSet, util);
+        // important=true: send PIXELS_0 + PIXELS_1 as acknowledged writes so
+        // neither half of the LED frame is dropped (the half-image fix).
+        return this.sendCommandSet(cmdSet, util, false, true);
     }
 
     /**
@@ -1204,7 +1286,9 @@ class MbitMore {
                     message: new Uint8Array([])
                 }
             ],
-            util
+            util,
+            false, // not force
+            true // important: a lost stop-tone would leave the speaker on
         );
     }
 
@@ -1417,9 +1501,11 @@ class MbitMore {
      * @param {object} command command to send.
      * @param {number} command.id ID of the command.
      * @param {Uint8Array} command.message Contents of the command.
+     * @param {number} [interval] ms to settle after sending before resolving; 0 chains the next command back-to-back.
+     * @param {boolean} [withResponse] if true, send as an acknowledged write (reliable, ordered delivery).
      * @return {Promise} a Promise that resolves when the data was sent and after send command interval.
      */
-    sendCommand(command) {
+    sendCommand(command, interval = this.sendCommandInterval, withResponse = false) {
         // console.log('sendCommand', command);
         const data = uint8ArrayToBase64(
             new Uint8Array([command.id, ...command.message])
@@ -1430,9 +1516,13 @@ class MbitMore {
                 MM_SERVICE.COMMAND_CH,
                 data,
                 'base64',
-                false
+                withResponse
             );
-            setTimeout(() => resolve(), this.sendCommandInterval);
+            // `interval` is the post-send settle before the next command. It is 0
+            // for all but the last command of a set (see sendCommandSet), so a
+            // multi-frame op isn't paced between its own frames — only against the
+            // next operation.
+            setTimeout(() => resolve(), interval);
         });
     }
 
@@ -1441,9 +1531,10 @@ class MbitMore {
      * @param {Array.<{id: number, message: Uint8Array}>} commands array of command.
      * @param {BlockUtility} util - utility object provided by the runtime.
      * @param {boolean} force - force send command even if the micro:bit is busy.
+     * @param {boolean} important - if true, use acknowledged (reliable, ordered) writes; for display/actuators.
      * @return {?Promise} a Promise that resolves when the all commands was sent.
      */
-    sendCommandSet(commands, util, force = false) {
+    sendCommandSet(commands, util, force = false, important = false) {
         // console.log(commands)
         if (force) {
             this.microbitUpdateInterval = 500;
@@ -1455,11 +1546,11 @@ class MbitMore {
                 util.yield(); // re-try this call after a while.
                 if (force) {
                     // console.log("Retry sending command");
-                    setTimeout(() => this.sendCommandSet(commands, util, force), 20);
+                    setTimeout(() => this.sendCommandSet(commands, util, force, important), 20);
                     return true;
                 }
             } else {
-                setTimeout(() => this.sendCommandSet(commands, util, force), 20);
+                setTimeout(() => this.sendCommandSet(commands, util, force, important), 20);
             }
             return; // Do not return Promise.resolve() to re-try.
         }
@@ -1472,7 +1563,20 @@ class MbitMore {
         return new Promise(resolve => {
             commands
                 .reduce(
-                    (acc, cur) => acc.then(() => this.sendCommand(cur)),
+                    (acc, cur, idx) => acc.then(() => this.sendCommand(
+                        cur,
+                        // No settle BETWEEN frames of one operation — only after
+                        // the last command, to pace against the next block. A
+                        // display draw's PIXELS_0 + PIXELS_1 thus go back-to-back
+                        // instead of paying the per-command interval twice.
+                        idx === commands.length - 1 ? this.sendCommandInterval : 0,
+                        // Important ops (display + actuators) use acknowledged
+                        // writes so a frame is never silently dropped on the wire.
+                        // On BLE this is a GATT write-with-response (reliable +
+                        // ordered), which is what stops the half-updated LED image
+                        // (a lost PIXELS_0 leaving the old top half on screen).
+                        important
+                    )),
                     Promise.resolve()
                 )
                 .then(() => {
@@ -1608,8 +1712,20 @@ class MbitMore {
                     } else {
                         this.microbitUpdateInterval = 50; // milliseconds
                     }
-                    if (this.route === CommunicationRoute.SERIAL) {
-                        this.sendCommandInterval = 100; // milliseconds
+                    if (this.route === CommunicationRoute.DAP) {
+                        // CMSIS-DAP RAM-mailbox (mini 3 USB): ordered + lossless
+                        // (USB CRC + host FIFO + device slot-handshake) and the
+                        // device polls the slot every ~5ms, so no per-command
+                        // settle is needed. Pace at the device poll so pin-arming
+                        // / config bursts aren't throttled to 30ms each (N pins
+                        // went from N×30ms to ~N×5ms).
+                        this.sendCommandInterval = 5; // milliseconds
+                    } else if (this.route === CommunicationRoute.SERIAL) {
+                        // Was 100ms — the old polling serial transport needed the
+                        // slack. The live host bridge is event-driven and the
+                        // firmware RX now wakes per-byte (event-driven read), so
+                        // serial can be paced like BLE.
+                        this.sendCommandInterval = 30; // milliseconds
                     } else {
                         this.sendCommandInterval = 30; // milliseconds
                     }
@@ -1990,6 +2106,28 @@ class MbitMore {
      */
     listenPinEventType(pinIndex, eventType, util) {
         // console.log('listenPinEventType', pinIndex, eventType, util);
+        // Record durable intent so syncPinEventArming keeps this armed across a
+        // dropped SET_EVENT / device reset (the when-pin-event hat only READS
+        // events; this command block is what arms, and it runs once). NONE =
+        // explicit disarm → forget the pin.
+        if (eventType === MbitMorePinEventType.NONE) {
+            this.pinEventsWanted.delete(pinIndex);
+            this.pinEventArmed.delete(pinIndex);
+            delete this.pinEventConfigTimestamps[pinIndex];
+        } else {
+            this.pinEventsWanted.set(pinIndex, eventType);
+            // Optimistically mark armed as soon as we QUEUE the command — NOT in
+            // a .then(): sendCommandSet returns a non-thenable on its BLE-busy
+            // retry path, so a .then() would leave belief unset and make
+            // syncPinEventArming re-send every tick (a send storm). The COMMAND
+            // data[5..7] reconcile is the source of truth — if the device reports
+            // the pin OFF past the grace window, belief is cleared + re-sent.
+            this.pinEventArmed.set(pinIndex, eventType);
+        }
+        // Stamp the (re)arm so the reconcile's grace window can distinguish an
+        // in-flight arm from a genuine drop (matches configTouchPin's pre-send
+        // stamp). Also rate-limits the worker's re-sends.
+        this.pinEventConfigTimestamps[pinIndex] = Date.now();
         return this.sendCommandSet(
             [
                 {
@@ -2001,6 +2139,36 @@ class MbitMore {
             ],
             util
         );
+    }
+
+    /**
+     * Worker, run once per updater tick: re-arm every wanted-but-unarmed pin
+     * event. Idempotent + rate-limited (1s), so it's a no-op once each wanted pin
+     * is armed, and self-heals a dropped SET_EVENT or a device reset (the COMMAND
+     * data[5..7] reconcile clears the belief for disarmed pins; this re-sends on
+     * the next tick with no block involvement). The event-pin analogue of
+     * syncTouchArming.
+     */
+    syncPinEventArming() {
+        if (!this.isConnected() || this.pinEventsWanted.size === 0) return;
+        this.pinEventsWanted.forEach((eventType, pinIndex) => {
+            if (this.pinEventArmed.get(pinIndex) === eventType) return; // armed as wanted
+            const ts = this.pinEventConfigTimestamps[pinIndex];
+            if (ts && Date.now() - ts < 1000) return; // rate-limit re-sends
+            this.listenPinEventType(pinIndex, eventType); // sends + sets belief/stamp
+        });
+    }
+
+    /**
+     * Forget the previous program's wanted pin events (and the matching belief /
+     * rate-limit stamps). Called on program (re)load / green-flag — the new
+     * program's listenPinEventType blocks re-register theirs as they run. NOT
+     * called on disconnect, so arming survives a reconnect.
+     */
+    resetPinEventIntent() {
+        this.pinEventsWanted = new Map();
+        this.pinEventArmed = new Map();
+        this.pinEventConfigTimestamps = {};
     }
 
     /**
@@ -2759,6 +2927,13 @@ class MbitMoreBlocks {
         const peripheral = this._peripheral;
         if (!peripheral || typeof peripheral.resetDeviceState !== 'function') return;
         peripheral.resetDeviceState();
+        // Program (re)load / green-flag: forget the previous program's wanted pin
+        // events too (resetDeviceState keeps them, since they must survive a
+        // reconnect). The new program's listenPinEventType blocks re-register as
+        // they run.
+        if (typeof peripheral.resetPinEventIntent === 'function') {
+            peripheral.resetPinEventIntent();
+        }
         this.updatePrevButtonEvents();
         this.updatePrevGestureEvents();
         this.updatePrevPinEvents();
@@ -3660,7 +3835,7 @@ class MbitMoreBlocks {
             ...colorHexToRGB(RGB3)
         ]);
 
-        this._peripheral.sendCommandSet([{id: BLECommand.CMD_RGB << 5, message}], util);
+        this._peripheral.sendCommandSet([{id: BLECommand.CMD_RGB << 5, message}], util, false, true);
     }
 
     clearRGB(args, util) {
@@ -3671,7 +3846,7 @@ class MbitMoreBlocks {
             ...colorHexToRGB(black)
         ]);
 
-        this._peripheral.sendCommandSet([{id: BLECommand.CMD_RGB << 5, message}], util);
+        this._peripheral.sendCommandSet([{id: BLECommand.CMD_RGB << 5, message}], util, false, true);
     }
 
     controlMotor(args, util) {
@@ -3691,7 +3866,7 @@ class MbitMoreBlocks {
         this._peripheral.sendCommandSet([{
             id: (BLECommand.CMD_MOTOR << 5) | motor,
             message
-        }], util);
+        }], util, false, true);
     }
 
     /**
