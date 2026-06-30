@@ -230,6 +230,15 @@ class CalliopeRemote {
             } catch (_e) { /* ignore */ }
             return;
         }
+        if (data.type === 'calliope.rearmInputs') {
+            // Host (dev-only "Re-arm inputs" button) asked the program to re-arm
+            // its touch pads / pin events without a full reconnect. Surface it as
+            // a runtime event the calliopeMini extension listens for.
+            try {
+                this._runtime.emit('CALLIOPE_HOST_REARM_INPUTS');
+            } catch (_e) { /* ignore */ }
+            return;
+        }
         if (data.type === 'calliope.disconnect') {
             // Host signalled the device is gone for good. Stay "connected"
             // from scratch-vm's view (no Reconnect alert) but invoke the

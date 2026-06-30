@@ -662,6 +662,7 @@ class MbitMore {
         this._onConnect = this._onConnect.bind(this);
         this.onNotify = this.onNotify.bind(this);
         this._forceVersionReport = this._forceVersionReport.bind(this);
+        this.forceRearmInputs = this.forceRearmInputs.bind(this);
 
         this.stopTone = this.stopTone.bind(this);
         if (this.runtime) {
@@ -671,6 +672,9 @@ class MbitMore {
             // sees the real device reconnect, so the normal change-gated recheck
             // would never re-report a version the host cleared on disconnect.
             this.runtime.on('CALLIOPE_HOST_REHANDSHAKE', this._forceVersionReport);
+            // Host (dev-only "Re-arm inputs" button) asked to re-arm the program's
+            // touch pads / pin events without a full reconnect.
+            this.runtime.on('CALLIOPE_HOST_REARM_INPUTS', this.forceRearmInputs);
         }
 
         this.analogInUpdateInterval = 100; // milli-seconds
@@ -820,14 +824,35 @@ class MbitMore {
             if (data.byteLength >= 5) {
                 const armedMask = view.getUint8(4);
                 for (let pin = 0; pin <= 3; pin++) {
-                    if (this.config.pinMode[pin] === MbitMorePinMode.TOUCH &&
-                        !(armedMask & (1 << pin))) {
+                    const deviceArmed = !!(armedMask & (1 << pin));
+                    const believedArmed =
+                        this.config.pinMode[pin] === MbitMorePinMode.TOUCH;
+                    if (believedArmed && !deviceArmed) {
+                        // VM thinks armed, device says no → the device was reset
+                        // (connect/disconnect/program-switch). Clear our cache so
+                        // syncTouchArming re-sends CONFIG TOUCH on the next updater
+                        // tick and re-arms it (the pin stays in touchPinsWanted
+                        // across resets). Also drop the rate-limit stamp, otherwise
+                        // configTouchPin's 1s throttle blocks the re-send and the
+                        // pin stays unarmed (the "P0 not armed after reconnect" bug).
                         this.config.pinMode[pin] = undefined;
-                        // Also drop the rate-limit stamp so syncTouchArming
-                        // re-arms on the next tick; otherwise configTouchPin's 1s
-                        // throttle blocks the re-send and the pin stays unarmed
-                        // (the "P0 not armed after reset/reconnect" bug).
                         delete pinConfigTimestamps[pin];
+                    } else if (!believedArmed && deviceArmed && this.touchPinsWanted.has(pin)) {
+                        // Device IS armed but the VM never recorded it — the INVERSE
+                        // desync the disarm branch above can't see. It happens when
+                        // syncTouchArming armed the pad through configTouchPin's
+                        // bleBusy path: sendCommandSet returns no Promise there (it
+                        // schedules a setTimeout re-send instead), so the pad gets
+                        // armed on-device by that re-send but configTouchPin's
+                        // `config.pinMode[pin] = TOUCH` write-back is skipped. The
+                        // pad then works on the device while whenTouchEvent /
+                        // isPinTouched — which gate on isPinTouchMode — never fire
+                        // for it (the "P0 works, P1 stuck" report). Adopt the
+                        // device's truth so the hats start delivering events.
+                        // touchPinsWanted-gated so we never adopt a pad this program
+                        // doesn't use (e.g. one left armed by a previous program).
+                        this.config.pinMode[pin] = MbitMorePinMode.TOUCH;
+                        this.touchArmedAt[pin] = Date.now();
                     }
                 }
             }
@@ -1986,11 +2011,52 @@ class MbitMore {
      */
     syncTouchArming() {
         if (!this.isConnected() || this.touchPinsWanted.size === 0) return;
-        this.touchPinsWanted.forEach(pinIndex => {
+        // Arm at most ONE unarmed pad per tick. configTouchPin's send marks the
+        // shared `bleBusy` flag synchronously, so arming a second pad in the SAME
+        // tick hits the bleBusy branch of sendCommandSet — which, for the worker
+        // (util undefined), returns no Promise and so SKIPS configTouchPin's
+        // `config.pinMode = TOUCH` write-back. The pad still gets armed on-device
+        // by the retry, but the VM never records it, so whenTouchEvent /
+        // isPinTouched never fire for it (the "P0 works, P1 stuck" bug). Arming one
+        // pad per tick lets each grab a clean (bleBusy-free) tick and record its
+        // pinMode; the next tick arms the next. The bidirectional data[4] reconcile
+        // in _recheckVersion is the backstop if a write-back is still missed.
+        for (const pinIndex of this.touchPinsWanted) {
             if (!this.isPinTouchMode(pinIndex)) {
                 this.configTouchPin(pinIndex);
+                break;
             }
+        }
+    }
+
+    /**
+     * Manually re-arm every input the current program wants — the dev-only
+     * "Re-arm inputs" escape hatch surfaced in the connection widget. Resets the
+     * VM's BELIEF about what's armed (without forgetting the WANTS), so the
+     * updater-loop workers (syncTouchArming / syncPinEventArming) re-send a fresh
+     * CONFIG TOUCH / SET_EVENT for every wanted pad/pin over the next few ticks.
+     * Recovers a stuck arming (e.g. a pad armed on-device but not recorded in the
+     * VM) without a full reconnect. No-op if nothing is wanted or disconnected.
+     * Triggered by the host via CALLIOPE_HOST_REARM_INPUTS.
+     */
+    forceRearmInputs() {
+        if (!this.isConnected()) return;
+        // Touch pads: forget the recorded TOUCH mode, drop the 1s throttle stamp,
+        // and clear the settle timestamp, so syncTouchArming re-sends CONFIG TOUCH
+        // for each wanted pad. KEEP touchPinsWanted — the program still wants them.
+        this.touchPinsWanted.forEach(pinIndex => {
+            this.config.pinMode[pinIndex] = undefined;
+            delete pinConfigTimestamps[pinIndex];
+            delete this.touchArmedAt[pinIndex];
         });
+        // Pin events: forget what we believe is armed + drop the throttle stamps,
+        // so syncPinEventArming re-sends SET_EVENT for each wanted pin. KEEP
+        // pinEventsWanted (mirrors resetDeviceState, which also keeps the wants).
+        this.pinEventArmed = new Map();
+        this.pinEventConfigTimestamps = {};
+        // Kick the workers now rather than waiting for the next updater tick.
+        this.syncTouchArming();
+        this.syncPinEventArming();
     }
 
     /**
