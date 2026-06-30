@@ -1006,7 +1006,9 @@ class MbitMore {
                     message: new Uint8Array([pinIndex, pullMode])
                 }
             ],
-            util
+            util,
+            false, // not force
+            true // important: acknowledged write so a BLE drop can't desync pull mode
         ).then(() => {
             this.config.pinMode[pinIndex] = MbitMorePinMode.INPUT;
             // console.log('pinMode', pinIndex, this.config.pinMode[pinIndex]);
@@ -1030,7 +1032,9 @@ class MbitMore {
                     message: new Uint8Array([pinIndex, level ? 1 : 0])
                 }
             ],
-            util
+            util,
+            false, // not force
+            true // important: acknowledged write so a BLE drop can't desync pin output
         ).then(() => {
             // console.log('setPinOutput', pinIndex, level, util);
             this.config.pinMode[pinIndex] = MbitMorePinMode.OUTPUT;
@@ -1058,7 +1062,9 @@ class MbitMore {
                     ])
                 }
             ],
-            util
+            util,
+            false, // not force
+            true // important: acknowledged write so a BLE drop can't desync PWM output
         ).then(() => {
             // console.log('setPinPWM', pinIndex, level, util);
             this.config.pinMode[pinIndex] = MbitMorePinMode.PWM;
@@ -1099,7 +1105,9 @@ class MbitMore {
                     ])
                 }
             ],
-            util
+            util,
+            false, // not force
+            true // important: acknowledged write so a BLE drop can't desync servo output
         ).then(() => {
             // console.log('setPinServo', pinIndex, level, util);
             this.config.pinMode[pinIndex] = MbitMorePinMode.SERVO;
@@ -1296,7 +1304,9 @@ class MbitMore {
                     ])
                 }
             ],
-            util
+            util,
+            false, // not force
+            true // important: acknowledged write so a lost PLAY_TONE can't mismatch a later STOP_TONE (speaker stuck on)
         );
     }
 
@@ -1759,7 +1769,17 @@ class MbitMore {
                         // serial can be paced like BLE.
                         this.sendCommandInterval = 30; // milliseconds
                     } else {
-                        this.sendCommandInterval = 30; // milliseconds
+                        // BLE. The 30ms was a silent-drop safety margin from when
+                        // state-changing commands rode UNacknowledged writes. Now
+                        // that display / motor / RGB / pin output+PWM+servo+pull /
+                        // tone all use acknowledged write-with-response (a drop is
+                        // retransmitted at the LL layer, never lost), the margin is
+                        // unnecessary on nRF52 (mini v2 / v3) — halve it to 15ms for
+                        // snappier command bursts (multi-pin config, RGB/motor
+                        // ramps). Keep the nRF51 (mini v1) radio on 30ms: it is
+                        // slower and less tolerant of tight pacing.
+                        this.sendCommandInterval =
+                            this.hardware === MbitMoreHardwareVersion.MICROBIT_V1 ? 30 : 15; // milliseconds
                     }
                     this.initConfig();
                     this.bleBusy = false;
