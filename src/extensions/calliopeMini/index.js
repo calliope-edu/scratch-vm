@@ -114,7 +114,10 @@ const MbitMoreDisplayCommand = {
     CLEAR: 0x00,
     TEXT: 0x01,
     PIXELS_0: 0x02,
-    PIXELS_1: 0x03
+    PIXELS_1: 0x03,
+    // Whole 5x5 on/off image in one 25-bit-bitmap frame (runtime v2+). Atomic
+    // (never a torn "half image") + one BLE round-trip instead of two.
+    PIXELS_PACKED: 0x04
 };
 
 /**
@@ -425,6 +428,26 @@ const EXPECTED_PROTOCOL = 2;
  */
 const EXPECTED_RUNTIME_VERSION = 1;
 
+/**
+ * Device blocks-runtime version (COMMAND data[3]) from which the v2 BLE
+ * optimisations are available: single-frame packed on/off display
+ * (PIXELS_PACKED), the display torn-frame generation tag, and STATE/MOTION push
+ * via NOTIFY (so the editor stops polling them). All three are feature-gated on
+ * the device reporting at least this version, so an older hex transparently
+ * keeps the 2-frame + polling path.
+ * @type {number}
+ */
+const RUNTIME_V2_FEATURES_VERSION = 2;
+
+/**
+ * How long (ms) a STATE/MOTION NOTIFY push is trusted before the updater resumes
+ * polling as a backstop. The device pushes ~every 57ms, so this tolerates a
+ * couple of dropped notifies while still re-enabling polling promptly if the
+ * stream stalls (device reset, out-of-range). Must be > the device push period.
+ * @type {number}
+ */
+const STATE_NOTIFY_STALE_MS = 200;
+
 const pinConfigTimestamps = {};
 
 /**
@@ -661,6 +684,8 @@ class MbitMore {
         this.onDisconnect = this.onDisconnect.bind(this);
         this._onConnect = this._onConnect.bind(this);
         this.onNotify = this.onNotify.bind(this);
+        this._onStateNotify = this._onStateNotify.bind(this);
+        this._onMotionNotify = this._onMotionNotify.bind(this);
         this._forceVersionReport = this._forceVersionReport.bind(this);
         this.forceRearmInputs = this.forceRearmInputs.bind(this);
 
@@ -784,14 +809,52 @@ class MbitMore {
         this.syncTouchArming();
         this.syncPinEventArming();
         this._reportTouchStatusIfChanged();
-        this.updateState()
-            .then(() => this.updateMotion())
-            .finally(() => {
-                this.updater = setTimeout(
-                    () => this.startUpdater(),
-                    this.microbitUpdateInterval
-                );
-            });
+        // On a runtime-v2+ device we SUBSCRIBE to STATE + MOTION notifications
+        // (pushed ~every 50ms) and serve them from cache, so we skip the two
+        // per-tick GATT reads that otherwise monopolise the single-flight BLE
+        // link and starve command writes. Poll only as a BACKSTOP: until the
+        // first notify arrives, or if the notify stream stalls (> STATE_NOTIFY_
+        // STALE_MS), fall back to reading so sensors never go silent.
+        const pollChain = this._stateNotifyFresh()
+            ? Promise.resolve(this)
+            : this.updateState().then(() => this.updateMotion());
+        pollChain.finally(() => {
+            this.updater = setTimeout(
+                () => this.startUpdater(),
+                this.microbitUpdateInterval
+            );
+        });
+    }
+
+    /**
+     * Whether STATE/MOTION are currently being kept fresh by the device's NOTIFY
+     * push (runtime v2+), so the updater can skip its polling reads. True only
+     * while a notify has arrived within STATE_NOTIFY_STALE_MS — so a stalled
+     * stream automatically re-enables polling (self-healing backstop).
+     * @return {boolean}
+     */
+    _stateNotifyFresh() {
+        if (!this._stateNotifySubscribed) return false;
+        const last = this._lastStateNotifyAt || 0;
+        return (Date.now() - last) < STATE_NOTIFY_STALE_MS;
+    }
+
+    /**
+     * Subscribe to STATE + MOTION NOTIFY once the device is known to run runtime
+     * v2+ (where those chars gained the NOTIFY property). Idempotent: no-ops if
+     * already subscribed or the device is pre-v2 (those chars are READ-only, so
+     * subscribing would just fail and we keep polling). Called from _onConnect
+     * and _recheckVersion, so the push kicks in whenever v2 is first observed —
+     * including a device that only becomes reachable after the initial connect.
+     * The durable subscription is re-armed by the host across reconnects.
+     */
+    _ensureStateNotifySubscribed() {
+        if (this._stateNotifySubscribed) return;
+        if ((this.runtimeVersion || 0) < RUNTIME_V2_FEATURES_VERSION) return;
+        if (!this._ble || typeof this._ble.startNotifications !== 'function') return;
+        this._stateNotifySubscribed = true;
+        this._ble.startNotifications(MM_SERVICE.ID, MM_SERVICE.STATE_CH, this._onStateNotify);
+        this._ble.startNotifications(MM_SERVICE.ID, MM_SERVICE.MOTION_CH, this._onMotionNotify);
     }
 
     /**
@@ -892,6 +955,10 @@ class MbitMore {
             if (ver === this.runtimeVersion) return; // unchanged → nothing to do
             this.runtimeVersion = ver;
             this.hardware = view.getUint8(0);
+            // A device we now know is runtime v2+ (freshly connected, reconnected,
+            // or re-flashed) gains STATE/MOTION NOTIFY — subscribe so we can stop
+            // polling. Idempotent; no-ops on pre-v2.
+            this._ensureStateNotifySubscribed();
             let expected = EXPECTED_RUNTIME_VERSION;
             if (this._editorRuntimeVersions) {
                 expected = this.hardware === MbitMoreHardwareVersion.MICROBIT_V1
@@ -966,7 +1033,46 @@ class MbitMore {
      * @return {?Promise} a Promise that resolves when command sending done or undefined if this process was yield.
      */
     displayPixels(matrix, util) {
-        // console.log('displayPixels', matrix, util);
+        // The standard display block is on/off (every pixel 0 or full-on 255).
+        // On a runtime-v2+ device send the whole 5x5 as ONE packed frame (25-bit
+        // bitmap): atomic — it can never render as a torn "half image" — and a
+        // single BLE round-trip instead of two. Brightness images (a future
+        // block) and pre-v2 devices fall back to the 2-frame path below.
+        const onOff = matrix.every(row => row.every(v => v === 0 || v === 255));
+        if (onOff && (this.runtimeVersion || 0) >= RUNTIME_V2_FEATURES_VERSION) {
+            let bits = 0;
+            for (let row = 0; row < 5; row++) {
+                for (let col = 0; col < 5; col++) {
+                    if (matrix[row][col] === 255) {
+                        bits |= (1 << ((row * 5) + col));
+                    }
+                }
+            }
+            return this.sendCommandSet(
+                [
+                    {
+                        id:
+                            (BLECommand.CMD_DISPLAY << 5) |
+                            MbitMoreDisplayCommand.PIXELS_PACKED,
+                        message: new Uint8Array([
+                            bits & 0xff,
+                            (bits >> 8) & 0xff,
+                            (bits >> 16) & 0xff,
+                            (bits >> 24) & 0xff
+                        ])
+                    }
+                ],
+                util,
+                false, // not force
+                true // important: acknowledged so the single atomic frame lands
+            );
+        }
+        // 2-frame path (brightness image, or a pre-v2 device). Append a rolling
+        // 1-byte generation tag to both frames: a v2 device renders PIXELS_1 only
+        // when its tag matches the preceding PIXELS_0 (never a torn frame), while
+        // a pre-v2 device simply ignores the trailing byte. Kept acknowledged.
+        this._displayGen = ((this._displayGen || 0) + 1) & 0xff;
+        const gen = this._displayGen;
         const cmdSet = [
             {
                 id:
@@ -975,18 +1081,19 @@ class MbitMore {
                 message: new Uint8Array([
                     ...matrix[0],
                     ...matrix[1],
-                    ...matrix[2]
+                    ...matrix[2],
+                    gen
                 ])
             },
             {
                 id:
                     (BLECommand.CMD_DISPLAY << 5) |
                     MbitMoreDisplayCommand.PIXELS_1,
-                message: new Uint8Array([...matrix[3], ...matrix[4]])
+                message: new Uint8Array([...matrix[3], ...matrix[4], gen])
             }
         ];
-        // important=true: send PIXELS_0 + PIXELS_1 as acknowledged writes so
-        // neither half of the LED frame is dropped (the half-image fix).
+        // important=true: acknowledged writes so neither half of the LED frame is
+        // dropped (the half-image fix); the gen tag is belt-and-suspenders.
         return this.sendCommandSet(cmdSet, util, false, true);
     }
 
@@ -1208,28 +1315,33 @@ class MbitMore {
                     if (!result) return resolve(this);
                     const data = base64ToUint8Array(result.message);
                     if (data.byteLength < 7) return resolve(this);
-                    const dataView = new DataView(data.buffer, 0);
-                    // Digital Input
-                    const gpioData = dataView.getUint32(0, true);
-                    for (let i = 0; i < this.gpio.length; i++) {
-                        this.digitalLevel[this.gpio[i]] =
-                            (gpioData >> this.gpio[i]) & 1;
-                    }
-
-                    Object.keys(MbitMoreButtonStateIndex).forEach(name => {
-                        this.buttonState[name] =
-                            (gpioData >>
-                                (24 + MbitMoreButtonStateIndex[name])) &
-                            1;
-                    });
-                    this.lightLevel = dataView.getUint8(4);
-                    this.temperature = dataView.getUint8(5) - 128;
-                    this.soundLevel = dataView.getUint8(6);
-                    this.resetConnectionTimeout();
+                    this._applyStateData(new DataView(data.buffer, 0));
                     // console.log("Update State")
                     resolve(this);
                 });
         });
+    }
+
+    /**
+     * Parse a 7-byte STATE payload (digital levels + buttons + light/temp/sound)
+     * into the cached fields. Shared by the polled read (updateState) and the
+     * runtime-v2 NOTIFY push (_onStateNotify) so both stay in sync.
+     * @param {DataView} dataView - STATE payload, byteLength >= 7.
+     */
+    _applyStateData(dataView) {
+        // Digital Input
+        const gpioData = dataView.getUint32(0, true);
+        for (let i = 0; i < this.gpio.length; i++) {
+            this.digitalLevel[this.gpio[i]] = (gpioData >> this.gpio[i]) & 1;
+        }
+        Object.keys(MbitMoreButtonStateIndex).forEach(name => {
+            this.buttonState[name] =
+                (gpioData >> (24 + MbitMoreButtonStateIndex[name])) & 1;
+        });
+        this.lightLevel = dataView.getUint8(4);
+        this.temperature = dataView.getUint8(5) - 128;
+        this.soundLevel = dataView.getUint8(6);
+        this.resetConnectionTimeout();
     }
 
     /**
@@ -1367,29 +1479,35 @@ class MbitMore {
                     if (!result) return resolve(this);
                     const data = base64ToUint8Array(result.message);
                     if (data.byteLength < 18) return resolve(this);
-                    const dataView = new DataView(data.buffer, 0);
-                    // Accelerometer
-                    this.pitch = Math.round(
-                        (dataView.getInt16(0, true) * 180) / Math.PI / 1000
-                    );
-                    this.roll = Math.round(
-                        (dataView.getInt16(2, true) * 180) / Math.PI / 1000
-                    );
-                    this.acceleration.x =
-                        (1000 * dataView.getInt16(4, true)) / G;
-                    this.acceleration.y =
-                        (1000 * dataView.getInt16(6, true)) / G;
-                    this.acceleration.z =
-                        (1000 * dataView.getInt16(8, true)) / G;
-                    // Magnetometer
-                    this.compassHeading = dataView.getUint16(10, true);
-                    this.magneticForce.x = dataView.getInt16(12, true);
-                    this.magneticForce.y = dataView.getInt16(14, true);
-                    this.magneticForce.z = dataView.getInt16(16, true);
-                    this.resetConnectionTimeout();
+                    this._applyMotionData(new DataView(data.buffer, 0));
                     resolve(this);
                 });
         });
+    }
+
+    /**
+     * Parse an 18-byte MOTION payload (accelerometer + magnetometer) into the
+     * cached fields. Shared by the polled read (updateMotion) and the runtime-v2
+     * NOTIFY push (_onMotionNotify).
+     * @param {DataView} dataView - MOTION payload, byteLength >= 18.
+     */
+    _applyMotionData(dataView) {
+        // Accelerometer
+        this.pitch = Math.round(
+            (dataView.getInt16(0, true) * 180) / Math.PI / 1000
+        );
+        this.roll = Math.round(
+            (dataView.getInt16(2, true) * 180) / Math.PI / 1000
+        );
+        this.acceleration.x = (1000 * dataView.getInt16(4, true)) / G;
+        this.acceleration.y = (1000 * dataView.getInt16(6, true)) / G;
+        this.acceleration.z = (1000 * dataView.getInt16(8, true)) / G;
+        // Magnetometer
+        this.compassHeading = dataView.getUint16(10, true);
+        this.magneticForce.x = dataView.getInt16(12, true);
+        this.magneticForce.y = dataView.getInt16(14, true);
+        this.magneticForce.z = dataView.getInt16(16, true);
+        this.resetConnectionTimeout();
     }
 
     /**
@@ -1747,6 +1865,10 @@ class MbitMore {
                         MM_SERVICE.SENSOR_EVENT_CH,
                         this.onNotify
                     );
+                    // Runtime v2+: STATE + MOTION are also NOTIFY chars, pushed by
+                    // the device ~every 57ms. Subscribe so the updater can stop
+                    // polling them (2 GATT reads/tick that hog the BLE link).
+                    this._ensureStateNotifySubscribed();
                     // nRF51 (mini 1/2) polls slower than nRF52 (mini 3); this
                     // is a throughput tuning, not a protocol difference.
                     if (this.hardware === MbitMoreHardwareVersion.MICROBIT_V1) {
@@ -1791,6 +1913,31 @@ class MbitMore {
                 })
                 .catch(err => this._ble.handleDisconnectError(err));
         }, 500); // 500ms delay
+    }
+
+    /**
+     * NOTIFY handler for the STATE characteristic (runtime v2+). Parses the
+     * pushed payload into the cached fields and stamps the arrival time so the
+     * updater knows the poll can be skipped this tick (_stateNotifyFresh).
+     * @param {string} msg - base64 STATE payload.
+     * @private
+     */
+    _onStateNotify(msg) {
+        const data = base64ToUint8Array(msg);
+        if (data.byteLength < 7) return;
+        this._applyStateData(new DataView(data.buffer, 0));
+        this._lastStateNotifyAt = Date.now();
+    }
+
+    /**
+     * NOTIFY handler for the MOTION characteristic (runtime v2+).
+     * @param {string} msg - base64 MOTION payload.
+     * @private
+     */
+    _onMotionNotify(msg) {
+        const data = base64ToUint8Array(msg);
+        if (data.byteLength < 18) return;
+        this._applyMotionData(new DataView(data.buffer, 0));
     }
 
     /**
