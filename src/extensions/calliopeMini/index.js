@@ -591,6 +591,21 @@ class MbitMore {
         this.touchPinsWanted = new Set();
 
         /**
+         * Pins (0..3) currently driven as an OUTPUT — servo / digital-out /
+         * analog-out (PWM). Set SYNCHRONOUSLY when the command is queued (the
+         * config.pinMode write-back happens in a .then that is skipped on the
+         * bleBusy path, so it can't be relied on for this). A touch-capable pad
+         * driving a servo must be EXCLUDED from touch (re)arming and the
+         * "preparing" report: they can't coexist electrically, and re-arming
+         * touch on it calls isTouched()→disconnect() which frees the servo's
+         * PWM channel and stops the servo mid-motion (the "servo runs briefly
+         * then stops" bug). Cleared on program (re)load / disconnect.
+         * @type {Set<number>}
+         * @private
+         */
+        this.outputPinsInUse = new Set();
+
+        /**
          * Pin-event arming the current program WANTS, by pin index → event type
          * (MbitMorePinEventType). The durable intent for CMD_PIN SET_EVENT, the
          * event-pin analogue of touchPinsWanted. Unlike touch (re-registered every
@@ -762,6 +777,10 @@ class MbitMore {
         // exactly those. Without this, a switch would keep arming pads the new
         // program doesn't use.
         this.touchPinsWanted = new Set();
+        // Forget which pads were driven as outputs (servo/PWM/digital-out) —
+        // the new program re-declares its outputs; without this a pad could
+        // stay excluded from touch across programs.
+        this.outputPinsInUse = new Set();
         // Pin events: forget what we believe is armed on the device (it was
         // reset/disconnected) + drop rate-limit stamps so syncPinEventArming
         // re-sends SET_EVENT for every still-wanted pin. KEEP pinEventsWanted —
@@ -1106,6 +1125,9 @@ class MbitMore {
      */
     setPullMode(pinIndex, pullMode, util) {
         // console.log('setPullMode', pinIndex, pullMode, util);
+        // Explicitly returning the pad to an input → it is no longer an output,
+        // so touch may re-arm it (clears the servo/output exclusion).
+        if (pinIndex >= 0 && pinIndex <= 3) this.outputPinsInUse.delete(pinIndex);
         return this.sendCommandSet(
             [
                 {
@@ -1191,6 +1213,11 @@ class MbitMore {
     setPinServo(pinIndex, angle, range, center, util) {
         if (!range || range < 0) range = 0;
         if (!center || center < 0) center = 0;
+        // Mark this pad as an output NOW (synchronously) so syncTouchArming /
+        // the preparing report stop treating it as a touch pad this very tick —
+        // before the async .then below records pinMode. Without this the touch
+        // worker re-arms the pad and disconnect()s the servo's PWM channel.
+        if (pinIndex >= 0 && pinIndex <= 3) this.outputPinsInUse.add(pinIndex);
         const dataView = new DataView(new ArrayBuffer(6));
         dataView.setUint16(0, angle, true);
         dataView.setUint16(2, range, true);
@@ -2196,11 +2223,32 @@ class MbitMore {
         // pinMode; the next tick arms the next. The bidirectional data[4] reconcile
         // in _recheckVersion is the backstop if a write-back is still missed.
         for (const pinIndex of this.touchPinsWanted) {
+            // A pad currently driven as an output (servo/PWM/digital-out) can't
+            // also be a touch input — re-arming it here would isTouched()→
+            // disconnect() its PWM channel and kill the servo. Skip it; if the
+            // program later stops driving the pad it re-arms on a later tick.
+            if (this.isPinOutput(pinIndex)) continue;
             if (!this.isPinTouchMode(pinIndex)) {
                 this.configTouchPin(pinIndex);
                 break;
             }
         }
+    }
+
+    /**
+     * True while pad `pinIndex` (0..3) is being driven as an output — servo,
+     * digital-out or PWM — and so must not be (re)armed for touch. Uses the
+     * synchronous `outputPinsInUse` marker AND the recorded pinMode, so it holds
+     * even on the bleBusy path where the pinMode write-back is skipped.
+     * @param {number} pinIndex - pad index.
+     * @return {boolean} whether the pad is currently an output.
+     */
+    isPinOutput(pinIndex) {
+        if (this.outputPinsInUse.has(pinIndex)) return true;
+        const m = this.config.pinMode[pinIndex];
+        return m === MbitMorePinMode.SERVO ||
+            m === MbitMorePinMode.OUTPUT ||
+            m === MbitMorePinMode.PWM;
     }
 
     /**
@@ -2261,6 +2309,11 @@ class MbitMore {
         if (this.touchPinsWanted.size > 0) {
             const now = Date.now();
             this.touchPinsWanted.forEach(pinIndex => {
+                // A pad currently driving a servo/output is intentionally not in
+                // touch mode — don't count it as "still preparing" (that made
+                // the banner stick on "Eingänge werden vorbereitet" for the whole
+                // time a servo ran on a touch-capable pad).
+                if (this.isPinOutput(pinIndex)) return;
                 if (!this.isPinTouchMode(pinIndex)) {
                     preparing = true;
                     return;
