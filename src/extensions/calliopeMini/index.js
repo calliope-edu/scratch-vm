@@ -451,15 +451,20 @@ const STATE_NOTIFY_STALE_MS = 200;
 const pinConfigTimestamps = {};
 
 /**
- * After a touch pad is armed the codal TouchButton calibrates and can surface a
- * phantom touch (~0.5-2s) with no finger. For this many ms after arming we treat
- * any event on that pad as initialization, not real input: the hat does not fire
- * (no action stack, no block glow) and the pad's baseline is pinned so the
- * phantom isn't replayed as an edge once the window lifts. Matches the firmware
- * per-pad guard so editor + device agree.
+ * How long after a touch pad is (re)armed the editor keeps reporting inputs as
+ * "preparing" (drives the campus banner ONLY — it does NOT suppress real
+ * touches). Sized to cover the runtime's post-(re)connect deaf window
+ * (CONNECT_GUARD_MS = 1200ms in the blocks-runtime BlocksCommon.h), during which
+ * the device drops all button/touch events.
+ *
+ * Before the tbl_hugo_touchpin runtime switched capacitive touch to a fixed
+ * threshold, this was 3000ms and ALSO gated hat firing, to mask a per-arm
+ * calibration phantom (~0.5-2s with no finger). The runtime no longer calibrates
+ * per arm, so that phantom is gone; the input-gating has been removed and this is
+ * now a banner-timing floor only.
  * @type {number}
  */
-const TOUCH_SETTLE_MS = 3000;
+const TOUCH_ARM_PREPARING_MS = 1200;
 
 /**
  * Grace window after (re)sending a pin-event SET_EVENT before the COMMAND
@@ -569,8 +574,10 @@ class MbitMore {
         });
 
         /**
-         * Wall-clock time each touch pad (by pin index) was last armed, used to
-         * suppress post-arm calibration phantoms. See TOUCH_SETTLE_MS.
+         * Wall-clock time each touch pad (by pin index) was last armed. Feeds the
+         * "preparing inputs" banner ONLY (see TOUCH_ARM_PREPARING_MS): a pad stays
+         * "preparing" until the device's post-connect deaf window has elapsed. It
+         * no longer gates real touch input.
          * @type {Object.<number, number>}
          * @private
          */
@@ -2177,9 +2184,10 @@ class MbitMore {
         if (sendPromise && typeof sendPromise.then === 'function') {
             return sendPromise.then(() => {
                 this.config.pinMode[pinIndex] = MbitMorePinMode.TOUCH;
-                // Start the post-arm settle window (see TOUCH_SETTLE_MS): the
-                // pad has just (re)armed, so suppress calibration phantoms until
-                // it has stabilised.
+                // Stamp the arm time so the "preparing" banner stays up until the
+                // device's post-connect deaf window has elapsed (see
+                // TOUCH_ARM_PREPARING_MS). Banner timing only — real touches are
+                // never gated by this.
                 this.touchArmedAt[pinIndex] = Date.now();
             });
         }
@@ -2298,11 +2306,13 @@ class MbitMore {
     }
 
     /**
-     * Tell the host whether the program's touch pads are still being armed or
-     * calibrated, so campus can show a transient "preparing inputs" banner.
-     * "Preparing" = any wanted pad is not yet in TOUCH mode, OR is armed but
-     * still inside its TOUCH_SETTLE_MS calibration window (touch not responsive
-     * yet). Posts only on a transition. Cheap; runs once per updater tick.
+     * Tell the host whether the program's touch pads are still being armed, so
+     * campus can show a transient "preparing inputs" banner.
+     * "Preparing" = any wanted pad is not yet in TOUCH mode (its CONFIG TOUCH
+     * arming round-trip hasn't completed — pads are armed one per updater tick),
+     * OR is armed but still inside TOUCH_ARM_PREPARING_MS, the window covering the
+     * device's post-connect deaf guard (touch not responsive yet). Posts only on
+     * a transition. Cheap; runs once per updater tick.
      */
     _reportTouchStatusIfChanged() {
         let preparing = false;
@@ -2319,7 +2329,7 @@ class MbitMore {
                     return;
                 }
                 const armedAt = this.touchArmedAt[pinIndex];
-                if (armedAt && (now - armedAt) < TOUCH_SETTLE_MS) {
+                if (armedAt && (now - armedAt) < TOUCH_ARM_PREPARING_MS) {
                     preparing = true;
                 }
             });
@@ -4004,22 +4014,12 @@ class MbitMoreBlocks {
         }
         const pinIndex = MbitMoreButtonPinIndex[buttonName];
         if (this._peripheral.isPinTouchMode(pinIndex)) {
-            // Post-arm settle window: a freshly-armed capacitive TouchButton
-            // calibrates and can surface a phantom touch with no finger. Treat
-            // any event in this window as initialization, not real input — pin
-            // this pad's baseline to the latest seen timestamp (so the phantom
-            // is not replayed as an edge once the window lifts) and DON'T fire:
-            // no action stack runs (no display/command writes) and the hat
-            // block does not glow.
-            const armedAt = this._peripheral.touchArmedAt[pinIndex];
-            if (armedAt && (Date.now() - armedAt) < TOUCH_SETTLE_MS) {
-                const events = this._peripheral.buttonEvents[buttonName];
-                if (events) {
-                    this.prevButtonEvents[buttonName] =
-                        Object.assign({}, events);
-                }
-                return false;
-            }
+            // Armed → fire on real events immediately. There is no client-side
+            // settle/suppression: the tbl_hugo_touchpin runtime uses a fixed
+            // capacitive threshold (no per-arm calibration phantom to mask), and
+            // the connect-time phantom burst is already dropped device-side by
+            // CONNECT_GUARD_MS. The old 3s swallow window only delayed genuine
+            // touches made right after arming.
             return this.whenButtonEvent(args);
         }
         // Not armed yet: register the pad so the updater-loop worker arms it.
