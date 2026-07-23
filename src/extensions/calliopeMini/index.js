@@ -477,6 +477,27 @@ const TOUCH_ARM_PREPARING_MS = 1200;
 const PIN_EVENT_REARM_GRACE_MS = 500;
 
 /**
+ * The editor now initiates the connect "C" (the mini runtime no longer draws it
+ * itself): on each (re)connect / USB-add the host posts calliope.onConnect, the
+ * VM shows "C" on the mini display, then after this delay raises the on-connect
+ * flag so the "when Calliope mini connected" hat fires — like an on-start.
+ * Delayed so the "C" is visibly shown before the program's on-connect stack
+ * (which may draw over the display) runs.
+ * @type {number}
+ */
+const ON_CONNECT_C_HAT_DELAY_MS = 500;
+
+/**
+ * How long the on-connect flag stays raised (see whenConnectionChanged). Long
+ * enough for the edge-activated hat to fire once across a few updater frames,
+ * then it clears so the NEXT connect re-triggers. A raised WINDOW (not a
+ * read-and-clear latch) is required so multiple "when connected" blocks each
+ * fire on their own rising edge rather than racing to consume a single latch.
+ * @type {number}
+ */
+const ON_CONNECT_C_HAT_WINDOW_MS = 300;
+
+/**
  * create menu for pin
  * @param {number} pinIndex
  * @returns menu object
@@ -703,8 +724,23 @@ class MbitMore {
          */
         this.bleBusyTimeoutID = null;
 
+        /**
+         * Raised for a brief window (ON_CONNECT_C_HAT_WINDOW_MS) shortly after
+         * each host-signalled (re)connect / USB-add, so the edge-activated
+         * "when Calliope mini connected" hat fires once. The mini's runtime no
+         * longer emits a device-side connect event; this is the editor-side
+         * replacement. Read (not consumed) by whenConnectionChanged.
+         * @type {boolean}
+         * @private
+         */
+        this._justConnected = false;
+        /** Timers backing _justConnected (arm-after-delay, then clear). @private */
+        this._onConnectArmTimer = null;
+        this._onConnectClearTimer = null;
+
         this.onDisconnect = this.onDisconnect.bind(this);
         this._onConnect = this._onConnect.bind(this);
+        this._onHostConnect = this._onHostConnect.bind(this);
         this.onNotify = this.onNotify.bind(this);
         this._onStateNotify = this._onStateNotify.bind(this);
         this._onMotionNotify = this._onMotionNotify.bind(this);
@@ -722,6 +758,10 @@ class MbitMore {
             // Host (dev-only "Re-arm inputs" button) asked to re-arm the program's
             // touch pads / pin events without a full reconnect.
             this.runtime.on('CALLIOPE_HOST_REARM_INPUTS', this.forceRearmInputs);
+            // Host signalled a transport (re)connect / USB-add: show the connect
+            // "C" on the mini and fire the program's "when connected" hat. Moved
+            // off-device so it fires on every transport, not just BLE.
+            this.runtime.on('CALLIOPE_HOST_ON_CONNECT', this._onHostConnect);
         }
 
         this.analogInUpdateInterval = 100; // milli-seconds
@@ -1013,6 +1053,32 @@ class MbitMore {
     _forceVersionReport () {
         this.runtimeVersion = undefined;
         this._recheckVersion();
+    }
+
+    /**
+     * Host signalled a transport (re)connect / USB-add (calliope.onConnect). The
+     * mini's runtime no longer draws the connect "C" itself, so the editor draws
+     * it: show "C" on the device display, then after a short delay raise the
+     * on-connect flag for a brief window so the edge-activated
+     * `whenConnectionChanged` ('connected') hat fires once — the "on start"
+     * behaviour. Idempotent per connect: re-arming clears any pending timers.
+     */
+    _onHostConnect () {
+        // Best-effort: a display command uses the normal reliable send path, so a
+        // racy connect where comms aren't up yet just skips the glyph.
+        try {
+            this.displayText('C', 0);
+        } catch (_e) { /* ignore */ }
+        if (this._onConnectArmTimer) clearTimeout(this._onConnectArmTimer);
+        if (this._onConnectClearTimer) clearTimeout(this._onConnectClearTimer);
+        this._onConnectArmTimer = setTimeout(() => {
+            this._onConnectArmTimer = null;
+            this._justConnected = true;
+            this._onConnectClearTimer = setTimeout(() => {
+                this._onConnectClearTimer = null;
+                this._justConnected = false;
+            }, ON_CONNECT_C_HAT_WINDOW_MS);
+        }, ON_CONNECT_C_HAT_DELAY_MS);
     }
 
     /**
@@ -4647,8 +4713,19 @@ class MbitMoreBlocks {
      * @return {boolean} - true if the state is matched.
      */
     whenConnectionChanged(args) {
-        const state = args.STATE === 'connected';
-        return state === this._peripheral.isConnected();
+        if (args.STATE === 'connected') {
+            // Editor-recognized "on connect" (on-start) event. The host posts
+            // calliope.onConnect on each (re)connect / USB-add; _onHostConnect
+            // shows the "C" and raises _justConnected for a brief window. This
+            // edge-activated hat fires once on the rising edge (per block), then
+            // the flag clears so the next connect re-triggers it. The mini no
+            // longer emits a device-side connect event.
+            return this._peripheral._justConnected === true;
+        }
+        // 'disconnected': the CalliopeRemote puppet always reports "connected"
+        // (so the user never sees a Reconnect alert), so there is no reliable
+        // disconnect edge — this variant stays dormant, as it did before.
+        return false;
     }
 }
 

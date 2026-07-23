@@ -230,6 +230,16 @@ class CalliopeRemote {
             } catch (_e) { /* ignore */ }
             return;
         }
+        if (data.type === 'calliope.onConnect') {
+            // Host detected a transport (re)connect / USB-add. The mini's runtime
+            // no longer draws the connect "C" itself — surface this as a runtime
+            // event so the calliopeMini extension shows "C" on the device and
+            // fires the program's "when connected" (on-start) hat.
+            try {
+                this._runtime.emit('CALLIOPE_HOST_ON_CONNECT');
+            } catch (_e) { /* ignore */ }
+            return;
+        }
         if (data.type === 'calliope.rearmInputs') {
             // Host (dev-only "Re-arm inputs" button) asked the program to re-arm
             // its touch pads / pin events without a full reconnect. Surface it as
