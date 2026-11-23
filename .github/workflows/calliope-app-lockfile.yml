@@ -1,0 +1,134 @@
+# Every push to calliope-main pins the new commit in the lockfile of each app
+# that uses this fork and commits that to the app's calliope-main. The app
+# builds it onto build-dev; its next tag takes it live. This fork has no tags
+# of its own.
+#
+# The commit is pushed with a token of the Calliope GitHub App (organisation
+# variable CALLIOPE_BOT_APP_ID, organisation secret CALLIOPE_BOT_PRIVATE_KEY),
+# so that it starts the app's build: a push with GITHUB_TOKEN starts nothing.
+#
+# The plan behind this: calliope-campus docs/design/2026-editor-channels.md,
+# "Library forks".
+name: calliope-app-lockfile
+
+on:
+  push:
+    branches:
+      - calliope-main
+  workflow_dispatch:
+
+concurrency:
+  group: calliope-app-lockfile
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # The name this fork has in the apps' package.json.
+  PACKAGE: 'scratch-vm'
+
+jobs:
+  pin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [scratch-gui]
+    steps:
+      - name: Token for calliope-edu/${{ matrix.app }}
+        id: token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.CALLIOPE_BOT_APP_ID }}
+          private-key: ${{ secrets.CALLIOPE_BOT_PRIVATE_KEY }}
+          owner: calliope-edu
+          repositories: ${{ matrix.app }}
+
+      - uses: actions/checkout@v4
+        with:
+          repository: calliope-edu/${{ matrix.app }}
+          ref: calliope-main
+          token: ${{ steps.token.outputs.token }}
+          sparse-checkout: |
+            package.json
+            package-lock.json
+            .npmrc
+          sparse-checkout-cone-mode: false
+
+      # The node the apps build with, so npm writes the lockfile as theirs does.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Re-resolves this fork to the newest commit of the branch the app's
+      # package.json names (calliope-main) and keeps every GitHub git
+      # dependency in the lockfile on https (npm writes them as git+ssh).
+      # `npm install <spec>` moves only this package; it also rewrites the
+      # app's package.json, which is put back as it was, with the lockfile's
+      # root entry. Tries three times in case the app's calliope-main moves
+      # meanwhile.
+      - name: Pin and push
+        env:
+          APP: ${{ matrix.app }}
+          SOURCE: ${{ github.repository }}@${{ github.sha }}
+        run: |
+          git config user.name 'calliope-bot'
+          git config user.email 'calliope-bot@users.noreply.github.com'
+          cat > "$RUNNER_TEMP/pin.cjs" <<'EOF'
+          const fs = require('fs');
+          const { execSync } = require('child_process');
+          const name = process.env.PACKAGE;
+          const key = 'node_modules/' + name;
+          const pkgText = fs.readFileSync('package.json', 'utf8');
+          const pkg = JSON.parse(pkgText);
+          const dev = !!(pkg.devDependencies && pkg.devDependencies[name]);
+          const spec = dev ? pkg.devDependencies[name] : pkg.dependencies && pkg.dependencies[name];
+          if (!spec) throw new Error(name + ' is not in package.json');
+          const text = fs.readFileSync('package-lock.json', 'utf8');
+          const indent = (text.match(/\n([ \t]+)"/) || [, '  '])[1];
+          const write = (lock) =>
+            fs.writeFileSync('package-lock.json', JSON.stringify(lock, null, indent) + '\n');
+          let lock = JSON.parse(text);
+          const root = lock.packages[''];
+          const before = lock.packages[key] && lock.packages[key].resolved;
+          if (!before) throw new Error(name + ' is not in package-lock.json');
+          execSync(
+            'npm install --package-lock-only --ignore-scripts --no-audit --no-fund ' +
+              (dev ? '--save-dev ' : '') +
+              JSON.stringify(name + '@' + spec),
+            { stdio: 'inherit' },
+          );
+          fs.writeFileSync('package.json', pkgText);
+          lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+          lock.packages[''] = root;
+          for (const entry of Object.values(lock.packages)) {
+            if (entry.resolved && entry.resolved.startsWith('git+ssh://git@github.com/')) {
+              entry.resolved = 'git+https://github.com/' + entry.resolved.slice(25);
+            }
+          }
+          write(lock);
+          const after = lock.packages[key].resolved;
+          console.log(name + ': ' + before + ' -> ' + after);
+          fs.writeFileSync(process.env.RUNNER_TEMP + '/pinned', after.split('#')[1]);
+          EOF
+          for attempt in 1 2 3; do
+            git fetch --quiet origin calliope-main
+            git reset --quiet --hard origin/calliope-main
+            node "$RUNNER_TEMP/pin.cjs"
+            pinned=$(cat "$RUNNER_TEMP/pinned")
+            if git diff --quiet; then
+              echo "calliope-edu/$APP already pins ${pinned:0:7}."
+              exit 0
+            fi
+            git commit --quiet -am "chore(deps): pin $PACKAGE ${pinned:0:7} from calliope-main" \
+              -m "Committed by $SOURCE (calliope-app-lockfile)."
+            if git push --quiet origin HEAD:calliope-main; then
+              echo "calliope-edu/$APP now pins ${pinned:0:7}."
+              exit 0
+            fi
+            echo "Push to calliope-edu/$APP failed, trying again."
+            sleep 10
+          done
+          exit 1
