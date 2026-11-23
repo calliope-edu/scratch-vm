@@ -551,7 +551,10 @@ class MbitMore {
          */
         this._editorRuntimeVersions = null;
         if (typeof fetch === 'function') {
-            fetch('/static/microbit/blocks-version.json', {cache: 'no-store'})
+            // Relative to the editor page, which sits beside static/: at the
+            // root of the editor's own host, under /editors/blocks/ in
+            // Calliope Campus.
+            fetch('static/microbit/blocks-version.json', {cache: 'no-store'})
                 .then(res => (res && res.ok ? res.json() : null))
                 .then(json => {
                     if (json && typeof json === 'object') {
