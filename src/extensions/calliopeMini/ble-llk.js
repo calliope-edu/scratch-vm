@@ -1,4 +1,4 @@
 const BLE = require('../../io/ble');
 const WebBLE = require('./ble-web');
 
-module.exports = navigator.bluetooth ? WebBLE : BLE;
+module.exports = typeof navigator !== 'undefined' && navigator.bluetooth ? WebBLE : BLE;

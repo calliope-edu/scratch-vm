@@ -254,4 +254,4 @@ class BLE extends JSONRPC {
     }
 }
 
-module.exports = navigator.bluetooth ? WebBLE : BLE;
+module.exports = typeof navigator !== 'undefined' && navigator.bluetooth ? WebBLE : BLE;
