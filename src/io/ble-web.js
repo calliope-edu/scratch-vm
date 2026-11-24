@@ -96,7 +96,7 @@ class WebBLE {
                     }
                 );
             })
-            .catch(e => console.log(e));
+            .catch(e => log.error(e));
     }
 
     /**

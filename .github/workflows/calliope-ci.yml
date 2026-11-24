@@ -1,0 +1,35 @@
+# Calliope's check for this fork: lint, tests and the webpack build on every
+# pull request to and push on calliope-main. Upstream's ci-cd (GitHub Pages,
+# semantic-release to npm) and update-i18n (Transifex) stay on upstream's
+# branches; the fork publishes nothing, scratch-gui pins it by commit.
+name: calliope-ci
+
+on:
+  pull_request:
+    branches: [calliope-main]
+  push:
+    branches: [calliope-main]
+  workflow_dispatch:
+
+concurrency:
+  group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          cache: npm
+          node-version-file: .nvmrc
+      - run: npm ci
+      # eslint only: `npm run lint` also runs `format-message lint`, whose
+      # parser (ES2015) cannot read the dynamic import in extension-manager.js.
+      - run: npx eslint .
+      - run: npm run tap
+      - run: npm run build
