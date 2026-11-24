@@ -115,7 +115,10 @@ class CalliopeRemote {
         });
     }
 
-    /** Outbound postMessage to parent. */
+    /**
+     * Outbound postMessage to parent.
+     * @param {object} message - the message to post; `source` is added.
+     */
     _post(message) {
         if (typeof window === 'undefined') return;
         if (!isFramed()) {
@@ -152,7 +155,7 @@ class CalliopeRemote {
      * COMMAND version byte, so the host can show an "outdated firmware" banner
      * and the connection widget can display the version. Namespaced `blocks.*`
      * (not `calliope.*`) so it routes to the host's blocks-message handler.
-     * @param {{runtimeVersion: number, expectedVersion: number, outdated: boolean}} status
+     * @param {{runtimeVersion: number, expectedVersion: number, outdated: boolean}} status - the version status.
      */
     reportStatus(status) {
         this._post(Object.assign({type: 'blocks.runtimeVersion'}, status));
@@ -165,13 +168,16 @@ class CalliopeRemote {
      * transient "preparing inputs" banner instead of acting as if touch is
      * already responsive. Namespaced `blocks.*` so it routes to the host's
      * blocks-message handler.
-     * @param {{preparing: boolean}} status
+     * @param {{preparing: boolean}} status - the arming status.
      */
     reportTouchStatus(status) {
         this._post(Object.assign({type: 'blocks.touchStatus'}, status));
     }
 
-    /** Inbound messages from parent. */
+    /**
+     * Inbound messages from parent.
+     * @param {MessageEvent} event - the message event from the parent window.
+     */
     _onParentMessage(event) {
         if (event.source !== window.parent) return;
         const data = event.data;
@@ -267,7 +273,7 @@ class CalliopeRemote {
     /**
      * Whether the peripheral is "connected". Always true once constructed
      * — the host manages the real-device state behind the scenes.
-     * @return {boolean}
+     * @return {boolean} - whether the peripheral is connected.
      */
     isConnected() {
         return this._connected;
@@ -278,10 +284,11 @@ class CalliopeRemote {
      * `{message, encoding}`. If the host has no live device the response
      * is an empty base64 string.
      *
-     * @param {number|string} serviceId
-     * @param {number|string} characteristicId
-     * @param {boolean} [optStartNotifications]
-     * @param {function} [onCharacteristicChanged]
+     * @param {number|string} serviceId - the service to read from.
+     * @param {number|string} characteristicId - the characteristic to read.
+     * @param {boolean} [optStartNotifications] - whether to subscribe to notifications too.
+     * @param {function} [onCharacteristicChanged] - callback for those notifications.
+     * @return {Promise<{message: string, encoding: string}>} - the value read.
      */
     read(serviceId, characteristicId, optStartNotifications = false, onCharacteristicChanged = null) {
         if (optStartNotifications) {
@@ -313,11 +320,12 @@ class CalliopeRemote {
      * Returns a resolved Promise so existing `.then()` chains in the
      * calliopeMini extension keep working.
      *
-     * @param {number|string} serviceId
-     * @param {number|string} characteristicId
+     * @param {number|string} serviceId - the service to write to.
+     * @param {number|string} characteristicId - the characteristic to write.
      * @param {string} message - base64 (default) or utf8 bytes
-     * @param {string} [encoding]
-     * @param {boolean} [withResponse]
+     * @param {string} [encoding] - the message's encoding.
+     * @param {boolean} [withResponse] - whether the host should write with response.
+     * @return {Promise} - resolves right away.
      */
     write(serviceId, characteristicId, message, encoding = null, withResponse = null) {
         // Paused (editor not visible): drop writes so a backgrounded Blocks
@@ -341,6 +349,10 @@ class CalliopeRemote {
      * for each `calliope.notify` message from the host on this UUID
      * tuple. Returns a Promise that resolves immediately (the host
      * doesn't ack subscriptions).
+     * @param {number|string} serviceId - the service to subscribe to.
+     * @param {number|string} characteristicId - the characteristic to subscribe to.
+     * @param {function} [onCharacteristicChanged] - callback for each notification.
+     * @return {Promise} - resolves right away.
      */
     startNotifications(serviceId, characteristicId, onCharacteristicChanged = null) {
         if (onCharacteristicChanged) {
@@ -355,7 +367,12 @@ class CalliopeRemote {
         return Promise.resolve();
     }
 
-    /** Unsubscribe — mirrors startNotifications. */
+    /**
+     * Unsubscribe — mirrors startNotifications.
+     * @param {number|string} serviceId - the service to unsubscribe from.
+     * @param {number|string} characteristicId - the characteristic to unsubscribe from.
+     * @return {Promise} - resolves right away.
+     */
     stopNotifications(serviceId, characteristicId) {
         const key = `${serviceId}|${characteristicId}`;
         this._notifySubscribers.delete(key);
@@ -412,7 +429,10 @@ class CalliopeRemote {
         // read/write will succeed once the host has a device again.
     }
 
-    /** No-op compatibility — old code may call this. */
+    /**
+     * No-op compatibility — old code may call this.
+     * @return {Promise} - resolves right away.
+     */
     sendRemoteRequest() {
         return Promise.resolve();
     }

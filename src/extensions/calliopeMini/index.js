@@ -499,15 +499,15 @@ const ON_CONNECT_C_HAT_WINDOW_MS = 300;
 
 /**
  * create menu for pin
- * @param {number} pinIndex
- * @returns menu object
+ * @param {number} pinIndex - index of the pin.
+ * @returns {object} menu item for the pin.
  */
-function createPinMenuForIndex(pinIndex) {
+const createPinMenuForIndex = function (pinIndex) {
     return {
         text: pinIndex < 4 ? `P${pinIndex}` : `C${pinIndex}`,
         value: pinIndex.toString()
     };
-}
+};
 
 /**
  * Manage communication with a MicroBit peripheral over a Scrath Link client socket.
@@ -802,7 +802,7 @@ class MbitMore {
         this.config = {};
         this.config.mic = false;
         this.config.pinMode = {};
-        this.config.isResistiveTouch = false
+        this.config.isResistiveTouch = false;
     }
 
     /**
@@ -900,7 +900,7 @@ class MbitMore {
      * push (runtime v2+), so the updater can skip its polling reads. True only
      * while a notify has arrived within STATE_NOTIFY_STALE_MS — so a stalled
      * stream automatically re-enables polling (self-healing backstop).
-     * @return {boolean}
+     * @return {boolean} - whether the notify stream is fresh.
      */
     _stateNotifyFresh() {
         if (!this._stateNotifySubscribed) return false;
@@ -967,7 +967,7 @@ class MbitMore {
                         // across resets). Also drop the rate-limit stamp, otherwise
                         // configTouchPin's 1s throttle blocks the re-send and the
                         // pin stays unarmed (the "P0 not armed after reconnect" bug).
-                        this.config.pinMode[pin] = undefined;
+                        delete this.config.pinMode[pin];
                         delete pinConfigTimestamps[pin];
                     } else if (!believedArmed && deviceArmed &&
                                this.touchPinsWanted.has(pin) && pinConfigTimestamps[pin]) {
@@ -1041,7 +1041,8 @@ class MbitMore {
                     outdated: ver < expected
                 });
             }
-        }).catch(() => { /* transient read failure — retried next tick */ });
+        })
+            .catch(() => { /* transient read failure — retried next tick */ });
     }
 
     /**
@@ -1054,7 +1055,7 @@ class MbitMore {
      * read report it again; the same read also runs the data[4] touch reconcile.
      */
     _forceVersionReport () {
-        this.runtimeVersion = undefined;
+        delete this.runtimeVersion;
         this._recheckVersion();
     }
 
@@ -1361,7 +1362,7 @@ class MbitMore {
         // Set pull mode to 'None' to reactivate analog functionality only if not in input mode
         if (this.config.pinMode[pinIndex] !== MbitMorePinMode.INPUT) {
             // console.log("set to input");
-            this.setPullMode(pinIndex, MbitMorePullModeID['None'], null);
+            this.setPullMode(pinIndex, MbitMorePullModeID.None, null);
         }
         this.bleBusy = true;
         this.bleBusyTimeoutID = window.setTimeout(() => {
@@ -1521,7 +1522,9 @@ class MbitMore {
             ],
             util,
             false, // not force
-            true // important: acknowledged write so a lost PLAY_TONE can't mismatch a later STOP_TONE (speaker stuck on)
+            // important: acknowledged write so a lost PLAY_TONE can't mismatch a
+            // later STOP_TONE (speaker stuck on)
+            true
         );
     }
 
@@ -1852,7 +1855,7 @@ class MbitMore {
                 .finally(() => {
                     this.bleBusy = false;
                     this.bleAccessWaiting = false;
-                    if(force){
+                    if (force){
                         if (this.hardware === MbitMoreHardwareVersion.MICROBIT_V1) {
                             this.microbitUpdateInterval = 100;
                         } else {
@@ -1905,7 +1908,7 @@ class MbitMore {
                         // reports the first real value it sees, and so we never
                         // claim "version 0 / outdated" for a device we couldn't
                         // actually read.
-                        this.runtimeVersion = undefined;
+                        delete this.runtimeVersion;
                     }
                     // Visible, NON-FATAL protocol guard: surface a firmware/
                     // editor wire-version skew instead of silently mis-parsing.
@@ -1936,13 +1939,13 @@ class MbitMore {
                     // would flash, from the bundled manifest (codal/dal by
                     // hardware); EXPECTED_RUNTIME_VERSION is the fallback if the
                     // manifest hasn't loaded yet.
-                    var expectedRuntime = EXPECTED_RUNTIME_VERSION;
+                    let expectedRuntime = EXPECTED_RUNTIME_VERSION;
                     if (this._editorRuntimeVersions) {
                         expectedRuntime = this.hardware === MbitMoreHardwareVersion.MICROBIT_V1
                             ? this._editorRuntimeVersions.dal
                             : this._editorRuntimeVersions.codal;
                     }
-                    var runtimeOutdated = this.runtimeVersion < expectedRuntime;
+                    const runtimeOutdated = this.runtimeVersion < expectedRuntime;
                     if (this.runtimeVersion > expectedRuntime) {
                         // eslint-disable-next-line no-console
                         console.warn(
@@ -2142,7 +2145,7 @@ class MbitMore {
         // Set pull mode to 'None' to reactivate analog functionality only if not in input mode
         if (this.config.pinMode[pin] !== MbitMorePinMode.INPUT) {
             // console.log("set to input");
-            this.setPullMode(pin, MbitMorePullModeID['DOWN'], null);
+            this.setPullMode(pin, MbitMorePullModeID.DOWN, null);
         }
         const level = this.readDigitalLevel(pin);
         // console.log('isPinHigh', pin, level);
@@ -2198,7 +2201,7 @@ class MbitMore {
             this.config.isResistiveTouch = isResistiveTouch;
             // Reset pin modes for touch pins
             [0, 1, 2, 3].forEach(pin => {
-                this.config.pinMode[pin] = undefined;
+                delete this.config.pinMode[pin];
             });
         }
         return Promise.resolve();
@@ -2357,10 +2360,10 @@ class MbitMore {
                     id: (BLECommand.CMD_CONFIG << 5) | MbitMoreConfig.TOUCH,
                     message: new Uint8Array([pinIndex, 0])
                 }],
-                undefined,
+                null,
                 true
             );
-            this.config.pinMode[pinIndex] = undefined;
+            delete this.config.pinMode[pinIndex];
             delete pinConfigTimestamps[pinIndex];
             delete this.touchArmedAt[pinIndex];
         });
@@ -2897,7 +2900,7 @@ class MbitMoreBlocks {
         ];
     }
 
-    /** 
+    /**
      * @return {array} - Menu items for touch type selector.
     */
     get TOUCH_TYPE_MENU() {
@@ -2917,7 +2920,7 @@ class MbitMoreBlocks {
                     description: 'label for resistive touch types'
                 }),
                 value: MbitMoreTouchType.RESISTIVE
-            },
+            }
         ];
     }
 
@@ -3644,7 +3647,7 @@ class MbitMoreBlocks {
                         default: 'magnetic force',
                         description: 'value of magnetic force (micro tesla)'
                     }),
-                    blockType: BlockType.REPORTER,
+                    blockType: BlockType.REPORTER
                 },
                 {
                     opcode: 'getAcceleration',
@@ -4073,10 +4076,9 @@ class MbitMoreBlocks {
      * @param {object} args - the block's arguments.
      * @param {string} args.NAME - name of the pin to catch.
      * @param {string} args.EVENT - event to catch.
-     * @param {object} util - utility object provided by the runtime.
      * @return {boolean|Promise<boolean>|undefined} - true if the event raised or promise that or undefinde if yield.
      */
-    whenTouchEvent(args, util) {
+    whenTouchEvent(args) {
         const buttonName = args.NAME;
         if (buttonName === MbitMoreButtonName.LOGO) {
             return this.whenButtonEvent(args);
@@ -4103,10 +4105,9 @@ class MbitMoreBlocks {
      * Test whether the touch-pin is touched.
      * @param {object} args - the block's arguments.
      * @param {string} args.NAME - name of the pin.
-     * @param {object} util - utility object provided by the runtime.
      * @return {boolean|Promise<boolean>|undefined} - true if touched or promise that or undefinde if yield.
      */
-    isPinTouched(args, util) {
+    isPinTouched(args) {
         // console.log('isPinTouched', this.config.isResistiveTouch)
         const buttonName = args.NAME;
         if (buttonName === MbitMoreButtonName.LOGO) {

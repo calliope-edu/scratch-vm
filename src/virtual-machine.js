@@ -577,8 +577,9 @@ class VirtualMachine extends EventEmitter {
                 this.runtime.addTarget(target);
                 /** @type RenderedTarget */ target.updateAllDrawableProperties();
                 // Ensure unique sprite name
-                if (target.isSprite())
+                if (target.isSprite()) {
                     this.renameSprite(target.id, target.getName());
+                }
             });
             // Sort the executable targets by layerOrder.
             // Remove layerOrder property after use.
@@ -1447,8 +1448,9 @@ class VirtualMachine extends EventEmitter {
      * Defaults to true.
      */
     emitTargetsUpdate(triggerProjectChange) {
-        if (typeof triggerProjectChange === 'undefined')
+        if (typeof triggerProjectChange === 'undefined') {
             triggerProjectChange = true;
+        }
         this.emit('targetsUpdate', {
             // [[target id, human readable target name], ...].
             targetList: this.runtime.targets

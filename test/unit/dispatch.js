@@ -50,7 +50,9 @@ test('local', t => {
 test('remote', t => {
     const fixturesDir = path.resolve(__dirname, '../fixtures');
     const shimPath = path.resolve(fixturesDir, 'dispatch-test-worker-shim.js');
-    const worker = new Worker(shimPath, null, {cwd: fixturesDir});
+    // execArgv: [] keeps tap's --require of a path relative to the repo root out of the worker,
+    // which runs in the fixtures directory.
+    const worker = new Worker(shimPath, null, {cwd: fixturesDir, execArgv: []});
     dispatch.addWorker(worker);
 
     const waitForWorker = new Promise(resolve => {

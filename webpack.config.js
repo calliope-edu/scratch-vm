@@ -39,7 +39,7 @@ const base = {
                 }
             },
             {
-                test: /\.(mp3|png)$/,
+                test: /\.(mp3|png|svg)$/,
                 loader: 'file-loader'
             }
         ]
